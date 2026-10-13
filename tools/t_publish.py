@@ -145,6 +145,17 @@ def run(
     if not quiet:
         show_cmd(cmd)
 
+    # gh 内部会去 PATH 里找 git；本机 git 不在 PATH 上（只在 Program Files），
+    # 结果就是 gh 能列出仓库、却在 release create 时报
+    # "unable to find git executable in PATH"。
+    # 这里只给子进程补 PATH，不改动当前进程与本机环境变量。
+    child_env = os.environ.copy()
+    git_exe = find_tool("git", GIT_FALLBACKS)
+    if git_exe:
+        git_dir = str(Path(git_exe).parent)
+        if git_dir.lower() not in child_env.get("PATH", "").lower():
+            child_env["PATH"] = git_dir + os.pathsep + child_env.get("PATH", "")
+
     try:
         proc = subprocess.run(
             cmd,
@@ -153,6 +164,7 @@ def run(
             text=True,
             encoding="utf-8",
             errors="replace",
+            env=child_env,
         )
     except FileNotFoundError:
         die(f"找不到可执行文件：{cmd[0]}\n       请确认它已安装，或用 --dry-run 先看计划。")
@@ -500,8 +512,17 @@ def main(argv: list[str] | None = None) -> int:
         # exe 自己解决解包目录与写入预检（见 mangakit.spec 的 runtime_tmpdir /
         # main.py 的 _startup_preflight），bat 只是留给旧习惯的兜底入口，
         # 带上它没坏处，缺了也不影响使用。
+        #
+        # 中文文件名不能直接交给 gh：实测 gh 把「启动漫卷.bat」传成了 default.bat
+        # （release 页面上用户看到的就是这个名字）。改成先复制成 ASCII 名再上传。
+        launcher_asset: Path | None = None
         if LAUNCHER.is_file():
-            assets.append(str(LAUNCHER))
+            launcher_asset = Path(tempfile.gettempdir()) / "MangaKit-launcher.bat"
+            try:
+                shutil.copyfile(LAUNCHER, launcher_asset)
+                assets.append(str(launcher_asset))
+            except OSError:
+                warn("启动漫卷.bat 复制失败，本次不带该资产。")
 
         if EXE.is_file() or args.dry_run:
             run([gh, "release", "create", tag, *assets,
@@ -511,6 +532,11 @@ def main(argv: list[str] | None = None) -> int:
             warn(f"{EXE} 不存在，Release 将不带资产。")
 
         if not args.dry_run:
+            if launcher_asset is not None:
+                try:
+                    launcher_asset.unlink()
+                except OSError:
+                    pass
             url = out_of(run([gh, "release", "view", tag, "--json", "url", "-q", ".url"],
                              mutating=False, check=False, quiet=True))
             print()
