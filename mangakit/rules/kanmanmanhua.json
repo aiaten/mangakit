@@ -1,0 +1,45 @@
+{
+  "id": "kanmanmanhua",
+  "name": "看漫画",
+  "lang": "cn",
+  "note": "规则示例：标准 M 站模板 默认不在界面列表里展示（hidden: true）。",
+  "domains": [
+    "kanmanmanhua.com",
+    "www.kanmanmanhua.com"
+  ],
+  "comic": {
+    "title": {
+      "css": "h1, .bookName",
+      "text": true
+    },
+    "author": {
+      "css": ".info a, .bookName",
+      "text": true
+    },
+    "cover": {
+      "css": ".bookimg img, .cover img",
+      "attr": "src"
+    },
+    "description": {
+      "css": ".intro, .bookintro",
+      "text": true
+    }
+  },
+  "chapters": {
+    "list": {
+      "css": "#chapterlist a, .chapter-list a"
+    },
+    "url": {
+      "attr": "href"
+    },
+    "title": {
+      "text": true
+    }
+  },
+  "pages": {
+    "list": {
+      "css": ".showimg img"
+    }
+  },
+  "hidden": true
+}

@@ -1,0 +1,65 @@
+{
+  "id": "mhua5",
+  "name": "漫画屋 mhua5.com",
+  "lang": "cn",
+  "note": "详情 /index.php/comic/<拼音>，章节 /index.php/chapter/<数字>（814 条量级）。标题是 p.comic-title（在 div.de-info__box 里，不是 h1），封面 .de-info__box img[src] 指向 static-tw.baozimh.com。章节页正文 img.lazy-read 走 data-original。搜索必须走路径形态 /index.php/search/<关键词>：带 ?keyword= / ?search= 会返回「很遗憾，您搜索的内容暂时没有找到」+ 推荐列表（假结果，banner 在 .search_head）。",
+  "domains": [
+    "mhua5.com",
+    "www.mhua5.com"
+  ],
+  "search_url": "https://www.mhua5.com/index.php/search/{q}",
+  "headers": {
+    "Accept-Language": "zh-CN,zh;q=0.9"
+  },
+  "comic": {
+    "title": {
+      "css": "p.comic-title",
+      "text": "direct"
+    },
+    "cover": {
+      "css": ".de-info__box img",
+      "attr": "src"
+    },
+    "author": {
+      "css": ".comic-author span.name a",
+      "text": "direct"
+    },
+    "description": {
+      "css": "p.intro-total",
+      "text": "direct"
+    }
+  },
+  "chapters": {
+    "list": {
+      "css": "a.j-chapter-link[href*='/index.php/chapter/'], .chapter__item a[href*='/index.php/chapter/']"
+    },
+    "url_re": "/index\\.php/chapter/\\d+$"
+  },
+  "pages": {
+    "list": {
+      "css": "img.lazy-read"
+    },
+    "url": {
+      "attr": "data-original"
+    },
+    "filter": "^https?://[^/]+/(?:scomic|fcomic)/.*\\.(?:jpg|jpeg|png|webp)(?:\\?|$)"
+  },
+  "search": {
+    "url": "https://www.mhua5.com/index.php/search/{q}",
+    "list": {
+      "css": "div.common-comic-item"
+    },
+    "link": {
+      "css": "a.cover[href*='/index.php/comic/']",
+      "attr": "href"
+    },
+    "title": {
+      "css": "p.comic__title a[href*='/index.php/comic/']",
+      "text": "direct"
+    },
+    "cover": {
+      "css": "img.lazy",
+      "attr": "data-original"
+    }
+  }
+}

@@ -1,0 +1,148 @@
+[
+  {
+    "id": "manhuagui_cc",
+    "site_name": "漫画柜",
+    "url": "https://manhuagui.cc/comic/douluodalu",
+    "chapter": 0,
+    "download": 3,
+    "search": "海贼王"
+  },
+  {
+    "id": "manhuahome",
+    "site_name": "漫画之家",
+    "url": "https://www.manhuahome.com/book/33.html",
+    "chapter": 0,
+    "download": 3,
+    "search": "海贼王"
+  },
+  {
+    "id": "manhuazhan",
+    "site_name": "漫画站",
+    "url": "https://www.manhuazhan.com/comic/263176",
+    "chapter": 0,
+    "download": 3
+  },
+  {
+    "id": "dongmanwang",
+    "site_name": "动漫网",
+    "url": "https://www.dongmanwang.com/dongman/12536/",
+    "chapter": 0,
+    "download": 3
+  },
+  {
+    "id": "acgn_cc",
+    "site_name": "動漫戲說",
+    "url": "https://comic.acgn.cc/manhua-zhizhuxia911shijiantebiepian.htm",
+    "chapter": 0,
+    "download": 3
+  },
+  {
+    "id": "dongmanmanhua",
+    "site_name": "咚漫漫画",
+    "url": "https://www.dongmanmanhua.cn/LOVE/dibaodebaizhou/list?title_no=2892",
+    "chapter": 0,
+    "download": 3
+  },
+  {
+    "id": "manhuazhan_xyz",
+    "site_name": "漫画栈",
+    "url": "https://manhuazhan.xyz/book/1667",
+    "chapter": 0,
+    "download": 3
+  },
+  {
+    "id": "comicwang",
+    "site_name": "漫画网",
+    "url": "https://www.comicwang.com/title/9840.html",
+    "chapter": 0,
+    "download": 3,
+    "search": "海贼王"
+  },
+  {
+    "id": "kanman",
+    "site_name": "上看漫画",
+    "url": "https://www.kanman.com/107883/",
+    "chapter": 0,
+    "download": 2
+  },
+  {
+    "id": "manhuawang",
+    "site_name": "漫画网 manhuawang",
+    "url": "https://www.manhuawang.com/manhuawang2000.html",
+    "chapter": 0,
+    "download": 3
+  },
+  {
+    "id": "dmanhua",
+    "site_name": "D漫画",
+    "url": "https://www.dmanhua.com/comic/7529.html",
+    "chapter": 0,
+    "download": 3,
+    "search": "海贼王"
+  },
+  {
+    "id": "dongmanla",
+    "site_name": "动漫啦",
+    "url": "https://www.dongman.la/manhua/detail/9367/",
+    "chapter": 0,
+    "download": 3,
+    "search": "海贼王"
+  },
+  {
+    "id": "songzimanhua",
+    "site_name": "松子漫画",
+    "url": "https://songzimanhua.com/book/37890/",
+    "chapter": 0,
+    "download": 3,
+    "search": "奥特曼"
+  },
+  {
+    "id": "mhua5",
+    "site_name": "漫画屋",
+    "url": "https://www.mhua5.com/index.php/comic/yirenzhixia",
+    "chapter": 0,
+    "download": 3,
+    "search": "海贼王"
+  },
+  {
+    "id": "bzmanga",
+    "site_name": "包子漫画",
+    "url": "https://cn.bzmanga.com/comic/xinkuimulangzhianhun-zhaopengxiaomitang",
+    "chapter": 0,
+    "download": 3,
+    "search": "海贼王"
+  },
+  {
+    "id": "mh250",
+    "site_name": "250漫画",
+    "url": "https://www.mh250.com/book/2adeebcd0b/",
+    "chapter": 0,
+    "download": 3
+  },
+  {
+    "id": "dingmanhua",
+    "site_name": "顶漫画",
+    "url": "https://www.dingmanhua.com/comic/278.html",
+    "chapter": 0,
+    "download": 3,
+    "search": "海贼王",
+    "full": true
+  },
+  {
+    "id": "wmh1234",
+    "site_name": "漫画1234",
+    "url": "https://m.wmh1234.com/comic/19930.html",
+    "chapter": 0,
+    "download": 3,
+    "search": "海贼王"
+  },
+  {
+    "id": "shenqimanhua",
+    "site_name": "神奇漫画",
+    "url": "https://shenqimanhua.net/comic/cminab9sws637nkk6ys9sh40u",
+    "chapter": 0,
+    "download": 3,
+    "search": "鬼压床",
+    "full": true
+  }
+]

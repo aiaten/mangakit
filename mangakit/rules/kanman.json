@@ -1,0 +1,52 @@
+{
+  "id": "kanman",
+  "name": "上看漫画 kanman",
+  "lang": "cn",
+  "note": "详情 /<comic_id>/ ，章节 /<comic_id>/<chapter_newid>.html；章节页图片在 window.comicInfo 的 chapter_img_list 数组里（带 auth_key 签名，过期会 403）。｜本版不支持站内搜索（/search?keyword= 直接 500，且无 /comic/<id> 详情路径）；可在搜索页用「打开网址…」直接粘贴作品页地址下载。 默认不在界面列表里展示（hidden: true）。",
+  "domains": [
+    "kanman.com",
+    "www.kanman.com",
+    "m.kanman.com"
+  ],
+  "search_url": "",
+  "headers": {
+    "Referer": "https://www.kanman.com/",
+    "Accept-Language": "zh-CN,zh;q=0.9"
+  },
+  "comic": {
+    "title": {
+      "css": "h1, .book-name, .comic-name",
+      "text": true
+    },
+    "cover": {
+      "css": "meta[property='og:image']",
+      "attr": "content"
+    },
+    "status": {
+      "css": "meta[property='og:novel:status']",
+      "attr": "content"
+    },
+    "description": {
+      "css": "meta[name='description']",
+      "attr": "content"
+    }
+  },
+  "chapters": {
+    "list": {
+      "css": "ol#j_chapter_list li.item > a"
+    },
+    "url_re": "/\\d+/[^/]+\\.html$",
+    "max_pages": 1
+  },
+  "pages": {
+    "list": {
+      "css": ".reader img"
+    },
+    "url": {
+      "attr": "src"
+    },
+    "lazy_js": "chapter_img_list\\s*:\\s*(\\[[^\\]]+\\])",
+    "filter": "^https?://hw-chapter"
+  },
+  "hidden": true
+}

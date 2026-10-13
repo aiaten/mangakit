@@ -1,0 +1,84 @@
+{
+  "id": "shenqimanhua",
+  "name": "神奇漫画 shenqimanhua.net",
+  "lang": "cn",
+  "note": "Next.js SSR 站。详情 /comic/<id>（id 是 cuid）。标题 h1[itemProp=name]（注意用 text=direct，h1 里还嵌了 <meta itemProp=url>）；作者 a[itemProp=author] span[itemProp=name]；状态 og:comic:status（ongoing/completed）；分类 meta[property=book:tag]；封面 og:image；简介 meta[property=og:description] 或 span[itemProp=description]。章节页 HTML 里只有最近 20 个 a[href^=/read/]，完整章节数组原样嵌在 self.__next_f.push(...) 的转义字符串里（{\"id\":..,\"title\":..,\"number\":..,\"createdAt\":..}），所以 chapters.embed 从内嵌数据里抠，展开按钮点了能拿到全部 300+ 话。章节 URL /read/<comicId>/<chapterId>。阅读页正文图是 <img src=\"/image/crawl92hm/comicsRes/.../N.webp\">，直接 src 即可（Next 的 image 组件已把真实地址渲染进 src）。搜索 /search?query=（参数是 query，不是 keyword/q/word —— 那三个都会退化成不筛选的默认列表）。",
+  "domains": [
+    "shenqimanhua.net",
+    "www.shenqimanhua.net"
+  ],
+  "search_url": "https://shenqimanhua.net/search?query={q}",
+  "headers": {
+    "Accept-Language": "zh-CN,zh;q=0.9"
+  },
+  "comic": {
+    "title": {
+      "css": "h1[itemProp='name']",
+      "text": "direct"
+    },
+    "cover": {
+      "css": "meta[property='og:image']",
+      "attr": "content"
+    },
+    "author": {
+      "css": "a[itemProp='author'] span[itemProp='name']",
+      "text": "direct"
+    },
+    "status": {
+      "css": "meta[name='og:comic:status']",
+      "attr": "content"
+    },
+    "description": {
+      "css": "span[itemProp='description']",
+      "text": "direct"
+    },
+    "tags": {
+      "css": "meta[property='book:tag']",
+      "attr": "content",
+      "url": false,
+      "all": true
+    }
+  },
+  "chapters": {
+    "list": {
+      "css": "a[href*='/read/']"
+    },
+    "url_re": "/read/[A-Za-z0-9]+/[A-Za-z0-9]+$",
+    "embed": {
+      "start": "\\\\\"chapters\\\\\":(\\[)",
+      "item": "\"id\":\"([^\"]+)\",\"title\":\"([^\"]*)\"",
+      "fields": [
+        "id",
+        "title"
+      ],
+      "url": "/read/{comic_id}/{id}"
+    }
+  },
+  "pages": {
+    "list": {
+      "css": "img[src*='/comicsRes/']"
+    },
+    "url": {
+      "attr": "src"
+    },
+    "filter": "^https?://shenqimanhua\\.net/image/[^/]+/comicsRes/[^\\s\"']+\\.(?:webp|jpg|jpeg|png)$"
+  },
+  "search": {
+    "url": "https://shenqimanhua.net/search?query={q}",
+    "list": {
+      "css": "a[href*='/comic/']"
+    },
+    "link": {
+      "css": "a[href*='/comic/']",
+      "attr": "href"
+    },
+    "title": {
+      "css": "div.text-sm.text-gray-900.line-clamp-1",
+      "text": "direct"
+    },
+    "cover": {
+      "css": "img[alt$='封面']",
+      "attr": "src"
+    }
+  }
+}

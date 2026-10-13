@@ -1,0 +1,49 @@
+{
+  "id": "mh250",
+  "name": "250漫画 mh250.com",
+  "lang": "cn",
+  "note": "详情 /book/<12位hex>/，章节 /book/<hex>/<数字>.html（180-732 条量级，页面很长属正常）。标题在 h1 里内嵌 <span class=\"labelBox\"> 分类标签，所以要用 text:direct 才干净。封面走 og:image（cover.tupian.run），正文 img.lazy 走 data-original（res2.tupian.run，webp）。首页搜索是 JS 跳转 msearchurl='/cf3'，/search、/62c、?keyword= 等各种猜法全是 404 或空页，本版不支持站内搜索；可在搜索页用「打开网址…」粘贴 /book/<hex>/ 下载。 默认不在界面列表里展示（hidden: true）。",
+  "domains": [
+    "mh250.com",
+    "www.mh250.com"
+  ],
+  "search_url": "",
+  "headers": {
+    "Accept-Language": "zh-CN,zh;q=0.9"
+  },
+  "comic": {
+    "title": {
+      "css": "h1",
+      "text": "direct"
+    },
+    "cover": {
+      "css": "meta[property='og:image']",
+      "attr": "content"
+    },
+    "author": {
+      "css": ".book-info .author, .info-item",
+      "text": true,
+      "all": true
+    },
+    "description": {
+      "css": ".book-desc, .book-intro",
+      "text": true
+    }
+  },
+  "chapters": {
+    "list": {
+      "css": "a[href*='/book/'][href$='.html']"
+    },
+    "url_re": "/book/[0-9a-f]+/\\d+\\.html$"
+  },
+  "pages": {
+    "list": {
+      "css": "div#cp_img img.lazy"
+    },
+    "url": {
+      "attr": "data-original"
+    },
+    "filter": "^https?://res[0-9]\\.tupian\\.run/res1_.*\\.(?:jpg|jpeg|png|webp)(?:\\?|$)"
+  },
+  "hidden": true
+}

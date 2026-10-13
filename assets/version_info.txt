@@ -1,0 +1,72 @@
+# UTF-8
+#
+# 漫卷 MangaKit —— Windows 版本资源（PyInstaller VSVersionInfo 格式）
+#
+# 由 mangakit.spec 通过 EXE(version=...) 引用，被写入 dist\MangaKit.exe 的
+# PE 资源段。用户在「属性 → 详细信息」里看到的就是这里的内容，杀软与
+# 发布平台也靠它识别产品身份。
+#
+# ── 版本号只有一个来源 ────────────────────────────────────────────────
+# 下面所有版本号都从 mangakit/__init__.py 的 __version__ 现读，不再手抄字面量。
+# 以前这里是写死的 '0.1.0'，注释还要求「改版本号时两处一起改」—— 实践里
+# 这种约定必然漂移：改了 __init__.py 忘了资源，exe 属性里就还是旧号，
+# 而那个数字恰好是用户报障时最常引用的字段。
+#
+# 为什么可以用 __import__：PyInstaller 读本文件时执行的是 `eval(整个文件文本)`
+# （PyInstaller/utils/win32/versioninfo.py:559 load_version_info_from_text_file），
+# 而打包必须在本仓库根目录 mangakit/ 下执行（mangakit.spec 里 Analysis 的入口
+# 写的是相对路径 "mangakit/__main__.py"，cwd 不对根本打不成包），所以那一刻
+# `import mangakit` 与构建本身一样必然可用。换言之这里没有引入新的脆弱点。
+#
+# 注意：本文件整体必须是「一个表达式」（前面可以放注释），不能写语句 ——
+# eval 不认赋值/SQL 式的多行语句，所以下面用海象运算符把版本解析结果复用。
+#
+# 其它注意事项：
+#   1. filevers / prodvers 必须是「四个整数」的元组，不能带引号，也不能写成
+#      "0.1.0"；__version__ 里少于 4 段时自动补 0。
+#   2. 字符串值必须用 Python 字符串字面量，PyInstaller 会用 UTF-16LE 编码写进资源。
+#   3. Translation 的 0x0804 是简体中文（zh-CN）的 language id，0x04B0 是
+#      Unicode 代码页；与 StringTable 里的 langid/codepage 必须一致，
+#      否则资源管理器里会显示成乱码或缺字段。
+
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    # _v：把 "0.1.0" 这样的 __version__ 解析成 (0, 1, 0, 0)。
+    # 只取数字段、不足 4 段补 0、超过 4 段截断 —— 版本号写成 1.2.3.4 或
+    # 1.2.3-beta 都不会让打包当场炸掉。
+    filevers=tuple(
+      (_v := (
+        lambda s: (
+          [int(x) for x in s.split(".") if x.strip().isdigit()] + [0, 0, 0, 0]
+        )[:4]
+      )(__import__("mangakit").__version__))
+    ),
+    prodvers=tuple(_v),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0),
+  ),
+  kids=[
+    StringFileInfo(
+      [
+        StringTable(
+          '080404b0',
+          [
+            StringStruct('CompanyName', '漫卷 MangaKit 项目组'),
+            StringStruct('FileDescription', '漫卷 MangaKit —— 通用漫画批量下载器'),
+            StringStruct('FileVersion', __import__("mangakit").__version__),
+            StringStruct('InternalName', 'MangaKit'),
+            StringStruct('LegalCopyright', 'Copyright (C) 2025 漫卷 MangaKit 项目组'),
+            StringStruct('OriginalFilename', 'MangaKit.exe'),
+            StringStruct('ProductName', '漫卷 MangaKit'),
+            StringStruct('ProductVersion', __import__("mangakit").__version__),
+          ],
+        ),
+      ]
+    ),
+    VarFileInfo([VarStruct('Translation', [0x0804, 1200])]),
+  ],
+)

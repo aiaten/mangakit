@@ -1,0 +1,52 @@
+{
+  "id": "manhuawang",
+  "name": "漫画网 manhuawang",
+  "lang": "cn",
+  "note": "详情 /manhuawang<id>.html，章节 /mhw/2_<id>_<章节id>.html；章节页 img.man_img 走 data-src（src 是 base64 占位图）。站内有大量 SEO 垃圾页 /books/<数字>/，章节选择器务必用 a[href*='/mhw/'] 限定。站点下发的图床 URL 有重复路径段（/kblmh//kblmh/storage/…），图床只认单层，必须靠 pages.replace 修正，否则全 404。｜本版不支持站内搜索（首页搜索是 #searchInput + newsearch(1) 的 JS 跳转，/search?keyword= 只返回空壳 3.5KB）；可在搜索页用「打开网址…」直接粘贴作品页地址下载。 默认不在界面列表里展示（hidden: true）。",
+  "domains": [
+    "manhuawang.com",
+    "www.manhuawang.com"
+  ],
+  "search_url": "",
+  "headers": {
+    "Referer": "https://www.manhuawang.com/",
+    "Accept-Language": "zh-CN,zh;q=0.9"
+  },
+  "comic": {
+    "title": {
+      "css": "h1.title",
+      "text": "direct"
+    },
+    "cover": {
+      "css": ".ctdbLeft img",
+      "attr": "src"
+    },
+    "author": {
+      "css": ".ctdbRight .info, .ctdbRight p",
+      "text": true
+    },
+    "description": {
+      "css": ".ctdbRight .desc, .comic-content .desc",
+      "text": true
+    }
+  },
+  "chapters": {
+    "list": {
+      "css": "div[id^='list-select'] li a, .detail-list li a, ul[class*='list-select'] li a"
+    }
+  },
+  "pages": {
+    "list": {
+      "css": "img.man_img"
+    },
+    "url": {
+      "attr": "data-src"
+    },
+    "replace": [
+      "/kblmh//kblmh/",
+      "/kblmh/"
+    ],
+    "filter": "\\.(?:jpg|jpeg|png|webp)(?:\\?|$)"
+  },
+  "hidden": true
+}

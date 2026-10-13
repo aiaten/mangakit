@@ -1,0 +1,58 @@
+{
+  "id": "acgn_cc",
+  "name": "動漫戲說 ACGN.cc",
+  "lang": "cn",
+  "note": "章节链接在详情页以 /view-<id>.htm 出现（li.mss 的「最新收錄」及 ul.load01_r 区域）；章节页图片放在 <div id=\"p0\" class=\"pic\" _src=\"...\">的自定义属性里，靠 pages.attr + url_re 提取。章节列表只有一卷时也要能取到。｜本版不支持站内搜索（/search?q= 返回 500（无搜索接口））；可在搜索页用「打开网址…」直接粘贴作品页地址下载。 默认不在界面列表里展示（hidden: true）。",
+  "domains": [
+    "acgn.cc",
+    "www.acgn.cc",
+    "comic.acgn.cc"
+  ],
+  "search_url": "",
+  "headers": {
+    "Referer": "https://comic.acgn.cc/",
+    "Accept-Language": "zh-TW,zh;q=0.9"
+  },
+  "comic": {
+    "title": {
+      "css": "h1",
+      "text": true
+    },
+    "cover": {
+      "css": ".box_info .r img, .r img, img[src*='/logo/']",
+      "attr": "src"
+    },
+    "author": {
+      "css": "li.mss span a, li.mss span",
+      "text": true,
+      "all": true
+    },
+    "description": {
+      "css": ".box_info2 dd, .czzhinan",
+      "text": true,
+      "all": true
+    },
+    "status": {
+      "css": "li.mss",
+      "text": true,
+      "all": true
+    }
+  },
+  "chapters": {
+    "list": {
+      "css": "a[href*='/view-'], a[href*='view-']"
+    },
+    "url": {
+      "attr": "href"
+    },
+    "url_re": "view-\\d+\\.htm"
+  },
+  "pages": {
+    "list": {
+      "css": "div.pic[_src]"
+    },
+    "attr": "_src",
+    "filter": "^https?://img\\.acgn\\.cc/.*\\.(?:jpg|jpeg|png|webp)(?:\\?|$)"
+  },
+  "hidden": true
+}

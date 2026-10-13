@@ -1,0 +1,86 @@
+{
+  "id": "dingmanhua",
+  "name": "顶漫画 dingmanhua.com",
+  "lang": "cn",
+  "note": "详情 /comic/<数字>.html，章节 /chapter/<漫画id>-<章节id>.html。章节页只有 1 张 loading.svg 占位，正文图靠 JS 循环生成：var num=eval(\"35\") 是总张数，var pasd=\"https://image1.dingmanhua.com/mh/<hash>/\" 是目录前缀，img.setAttribute('data-src', pasd + i + '.webp')。所以必须用 pages.lazy_js 字典（prefix/count）+ start/suffix，和 dmanhua 同源套路。图床 image1.dingmanhua.com 直连可下，不校验 Referer。搜索 /search?query=（注意是 query 不是 keyword；form 里 name 就是 query）。章节页夹着 aipornhub.ltd 广告链接，选择器只看 .images 内的 img 即可避开。",
+  "domains": [
+    "dingmanhua.com",
+    "www.dingmanhua.com"
+  ],
+  "search_url": "https://www.dingmanhua.com/search?query={q}",
+  "headers": {
+    "Accept-Language": "zh-CN,zh;q=0.9"
+  },
+  "comic": {
+    "title": {
+      "css": "h1",
+      "text": true
+    },
+    "cover": {
+      "css": "meta[property='og:image']",
+      "attr": "content"
+    },
+    "author": {
+      "css": ".manga-info .author, .author",
+      "text": true,
+      "all": true
+    },
+    "description": {
+      "css": ".manga-info .description, .manga-desc",
+      "text": true
+    }
+  },
+  "chapters": {
+    "list": {
+      "css": "a[href*='/chapter/']"
+    },
+    "url_re": "/chapter/\\d+-\\d+\\.html$",
+    "api": {
+      "url": "https://www.dingmanhua.com/comic/{id}",
+      "method": "POST",
+      "data": {},
+      "list": "data.chapters",
+      "title": "chapterName",
+      "chapter_url": "/chapter/{contentId}-{id}.html",
+      "headers": {
+        "Content-Type": "application/json",
+        "Referer": "https://www.dingmanhua.com/",
+        "Origin": "https://www.dingmanhua.com"
+      },
+      "note": "详情页只渲染最近 10 话，折叠部分藏在「加载更多章节」按钮后面：页面 JS 用 fetch('/comic/'+contentId, {method:'POST', Content-Type:application/json, body:'{}'}) 拿全部章节。GUI 里点「展开全部章节」才会调它。"
+    }
+  },
+  "pages": {
+    "list": {
+      "css": "div.images img.comic-image"
+    },
+    "url": {
+      "attr": "data-src"
+    },
+    "lazy_js": {
+      "prefix": "var\\s+pasd\\s*=\\s*[\"']([^\"']+)[\"']",
+      "count": "var\\s+num\\s*=\\s*eval\\(\\s*[\"']?(\\d+)[\"']?\\s*\\)"
+    },
+    "start": 1,
+    "suffix": ".webp",
+    "filter": "^https?://image1\\.dingmanhua\\.com/.*\\.(?:webp|jpg|jpeg|png)(?:\\?|$)"
+  },
+  "search": {
+    "url": "https://www.dingmanhua.com/search?query={q}",
+    "list": {
+      "css": "div.manga-card"
+    },
+    "link": {
+      "css": "a[href^='/comic/']",
+      "attr": "href"
+    },
+    "title": {
+      "css": "div.manga-title",
+      "text": "direct"
+    },
+    "cover": {
+      "css": "div.manga-image img.lazy",
+      "attr": "data-src"
+    }
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "id": "dongmanla",
+  "name": "动漫啦 dongman.la",
+  "lang": "cn",
+  "note": "详情 /manhua/detail/<id>/，目录页里的章节链接指向「单页展示版」（一屏只有 1 张大图 + 2 张预读），必须靠 chapters.url_replace 改写成 /manhua/chapter/<漫画id>/<章节id>/all.html，那是一屏放全部大图的版本（实测单章 42 张）。章节页正文 img.reader-img 走 data-original，src 是占位图。图床 img.dongman.la 直连可下，不需要 Referer。站内搜索 /manhua/search/?key=。",
+  "domains": [
+    "dongman.la",
+    "www.dongman.la",
+    "m.dongman.la"
+  ],
+  "search_url": "https://www.dongman.la/manhua/search/?key={q}",
+  "headers": {
+    "Accept-Language": "zh-CN,zh;q=0.9"
+  },
+  "comic": {
+    "title": {
+      "css": "h1[itemprop='name']",
+      "text": "direct"
+    },
+    "cover": {
+      "css": "meta[property='og:image']",
+      "attr": "content"
+    },
+    "author": {
+      "css": "p.detail-meta a",
+      "text": "direct"
+    },
+    "status": {
+      "css": "span.status-pill",
+      "text": "direct"
+    },
+    "description": {
+      "css": ".detail-intro, .detail-desc",
+      "text": true
+    }
+  },
+  "chapters": {
+    "list": {
+      "css": "a[href*='/manhua/chapter/']"
+    },
+    "url_re": "/manhua/chapter/\\d+/\\d+/$",
+    "url_replace": [
+      "/manhua/chapter/(\\d+)/(\\d+)/$",
+      "/manhua/chapter/\\1/\\2/all.html"
+    ]
+  },
+  "pages": {
+    "list": {
+      "css": "img.reader-img"
+    },
+    "url": {
+      "attr": "data-src"
+    },
+    "filter": "^https?://img\\.dongman\\.la/j/.*\\.(?:jpg|jpeg|png|webp)(?:\\?|$)"
+  },
+  "search": {
+    "url": "https://www.dongman.la/manhua/search/?key={q}",
+    "list": {
+      "css": "ul.divide-y li"
+    },
+    "link": {
+      "css": "h2 a[href*='/manhua/detail/']",
+      "attr": "href"
+    },
+    "title": {
+      "css": "h2 a[href*='/manhua/detail/']",
+      "text": "direct"
+    },
+    "cover": {
+      "css": "img[data-cover]",
+      "attr": "src"
+    }
+  }
+}

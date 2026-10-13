@@ -1,0 +1,86 @@
+{
+  "id": "wmh1234",
+  "name": "漫画1234 wmh1234.com",
+  "lang": "cn",
+  "note": "详情 /comic/<数字>.html，章节是 base64 短链 /go/<base64>（htm 里另有 noscript 里的 http-equiv=refresh 兜底）。/go/ 页面只有一句 <script>location.replace(\"https://reader.hqread.cc/r/<base64>\")</script>，直接抓只能拿到 800 字节空壳，所以 pages.jump 写 location.replace\\(\"([^\"]+)\"\\) 跟随一跳到真正的阅读页（reader.hqread.cc），正文图在 <img src=\"/template/wap/modern/images/placeholder.svg\" data-src=\"https://wmh1234.wszwhg.net/kantu/.../xxx.webp?st=..&e=..\" class=\"reader-image lazy\"> 里，务必用 url.attr=data-src（src 是占位 svg）。图片带 st/e 签名参数，Referer 校验用 referer_policy=page。搜索 /index.php/search?key=（注意是 index.php/search 且参数是 key，不是 ?q= 也不是 ?wd=）。封面 og:image。 桌面站(mint-detail-*)与手机站(mint-work-hero / mintWorkTitle)是两套模板，所以每个字段都写成逗号分隔的多选择器，attr 也写成列表逐个试——见 Selector 里 attr 支持 list。",
+  "domains": [
+    "wmh1234.com",
+    "www.wmh1234.com"
+  ],
+  "search_url": "https://www.wmh1234.com/index.php/search?key={q}",
+  "headers": {
+    "Accept-Language": "zh-CN,zh;q=0.9"
+  },
+  "comic": {
+    "title": {
+      "css": "h1[data-comic-name], h2#mintWorkTitle",
+      "text": "direct"
+    },
+    "cover": {
+      "css": "meta[property='og:image'], img.mint-work-cover",
+      "attr": [
+        "content",
+        "src"
+      ]
+    },
+    "author": {
+      "css": ".mint-detail-meta span:first-child, .mint-work-info p:first-of-type",
+      "text": "direct",
+      "replace": [
+        "作者：",
+        "",
+        "作者:",
+        "",
+        " 著",
+        ""
+      ]
+    },
+    "description": {
+      "css": ".mint-detail-description",
+      "text": "direct"
+    },
+    "tags": {
+      "css": ".mint-detail-meta span:not(:first-child), .mint-tag",
+      "text": "direct",
+      "all": true
+    },
+    "status": {
+      "css": ".mint-detail-meta span:not(:first-child), .mint-tag",
+      "text": "direct"
+    }
+  },
+  "chapters": {
+    "list": {
+      "css": "a[href*='/go/']:not(.mint-button)"
+    },
+    "url_re": "/go/[A-Za-z0-9_%+/=-]+$"
+  },
+  "pages": {
+    "jump": "location\\.replace\\(\\s*[\"']([^\"']+)[\"']\\s*\\)",
+    "list": {
+      "css": "img.reader-image"
+    },
+    "url": {
+      "attr": "data-src"
+    },
+    "filter": "^https?://wmh1234\\.wszwhg\\.net/.+\\.(?:webp|jpg|jpeg|png)(?:\\?|$)"
+  },
+  "search": {
+    "url": "https://www.wmh1234.com/index.php/search?key={q}",
+    "list": {
+      "css": "a.comic-card"
+    },
+    "link": {
+      "css": "a.comic-card",
+      "attr": "href"
+    },
+    "title": {
+      "css": "h3.comic-title",
+      "text": "direct"
+    },
+    "cover": {
+      "css": "img.comic-cover",
+      "attr": "data-original"
+    }
+  }
+}

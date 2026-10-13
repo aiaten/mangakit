@@ -1,0 +1,45 @@
+{
+  "id": "dongmanwang",
+  "name": "动漫网 dongmanwang",
+  "lang": "cn",
+  "note": "gb2312 老站。章节页与详情页在同一套 /dongman/<id>/ 路径下，章节链接是 play-N.html。｜本版不支持站内搜索（/search/{q} 返回 404）；可在搜索页用「打开网址…」直接粘贴作品页地址下载。 默认不在界面列表里展示（hidden: true）。",
+  "domains": [
+    "dongmanwang.com",
+    "www.dongmanwang.com"
+  ],
+  "search_url": "",
+  "headers": {
+    "Referer": "https://www.dongmanwang.com/",
+    "Accept-Language": "zh-CN,zh;q=0.9"
+  },
+  "comic": {
+    "title": {
+      "css": "h1",
+      "text": true
+    },
+    "cover": {
+      "css": ".content-img img",
+      "attr": "src"
+    },
+    "description": {
+      "css": ".introduction p",
+      "text": true,
+      "all": true
+    }
+  },
+  "chapters": {
+    "list": {
+      "css": "#playul a"
+    }
+  },
+  "pages": {
+    "list": {
+      "css": ".playinfo .introduction img"
+    },
+    "url": {
+      "attr": "src"
+    },
+    "filter": "dongmanwang\\.com/pic/"
+  },
+  "hidden": true
+}

@@ -1,0 +1,71 @@
+{
+  "id": "manhuagui_cc",
+  "name": "漫画柜（manhuagui.cc）",
+  "lang": "cn",
+  "note": "原 manhuagui.com 的镜像站，主域名已连不上，.cc 可用。章节页 img.manga-img 为长图，下载器会自动切图。",
+  "domains": [
+    "manhuagui.cc",
+    "www.manhuagui.cc"
+  ],
+  "search_url": "https://manhuagui.cc/search?q={q}",
+  "headers": {
+    "Referer": "https://manhuagui.cc/",
+    "Accept-Language": "zh-CN,zh;q=0.9"
+  },
+  "comic": {
+    "title": {
+      "css": "h1",
+      "text": true
+    },
+    "cover": {
+      "css": ".cover-wrapper img",
+      "attr": "src"
+    },
+    "author": {
+      "css": ".info-wrapper .info a, .info-wrapper li a",
+      "text": true,
+      "all": true
+    },
+    "status": {
+      "css": ".info-wrapper .info",
+      "text": true
+    },
+    "description": {
+      "css": ".intro, .comic-intro",
+      "text": true
+    },
+    "tags": {
+      "css": ".tags a, .tag a",
+      "text": true,
+      "all": true
+    }
+  },
+  "chapters": {
+    "list": {
+      "css": "a.chapter-item"
+    }
+  },
+  "pages": {
+    "list": {
+      "css": "img.manga-img"
+    },
+    "attr": "src"
+  },
+  "search": {
+    "url": "https://manhuagui.cc/search?q={q}",
+    "list": {
+      "css": "div.comics-grid a.comics-card"
+    },
+    "link": {
+      "attr": "href"
+    },
+    "title": {
+      "css": "p.title",
+      "text": "direct"
+    },
+    "cover": {
+      "css": ".comics-card__poster img",
+      "attr": "src"
+    }
+  }
+}

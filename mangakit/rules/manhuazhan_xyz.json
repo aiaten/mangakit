@@ -1,0 +1,60 @@
+{
+  "id": "manhuazhan_xyz",
+  "name": "漫画栈 manhuazhan.xyz",
+  "lang": "cn",
+  "note": "纯 SSR 站，章节页 img.lazy 的 data-original 才是真图（src 是 loading.gif）。搜索参数是 keyword 不是 q。｜本版不支持站内搜索（搜索页 /search?keyword= 返回的 ul.mh-list 是空的，结果由 /js/user-booklist.js 里的 yqdm.search() 走接口异步填充，SSR 拿不到）；可在搜索页用「打开网址…」直接粘贴作品页地址下载。 默认不在界面列表里展示（hidden: true）。",
+  "domains": [
+    "manhuazhan.xyz",
+    "www.manhuazhan.xyz"
+  ],
+  "search_url": "",
+  "headers": {
+    "Referer": "https://manhuazhan.xyz/",
+    "Accept-Language": "zh-CN,zh;q=0.9"
+  },
+  "comic": {
+    "title": {
+      "css": ".info h1",
+      "text": true
+    },
+    "author": {
+      "css": ".info p.subtitle",
+      "text": true,
+      "re": "作者[：:](.+)"
+    },
+    "cover": {
+      "css": ".cover img",
+      "attr": "src"
+    },
+    "description": {
+      "css": ".info p.content",
+      "text": true
+    },
+    "status": {
+      "css": ".info p.tip .block",
+      "text": true,
+      "re": "状态[：:](.+)",
+      "all": true
+    },
+    "tags": {
+      "css": ".info p.tip a[href^='/booklist/?cate=']",
+      "text": true,
+      "all": true
+    }
+  },
+  "chapters": {
+    "list": {
+      "css": "#chapterlistload ul.detail-list-select li a"
+    },
+    "url_re": "/chapter/\\d+$"
+  },
+  "pages": {
+    "list": {
+      "css": ".comiclist .comicpage img.lazy"
+    },
+    "url": {
+      "attr": "data-original"
+    }
+  },
+  "hidden": true
+}

@@ -1,0 +1,47 @@
+{
+  "id": "templatedm",
+  "name": "通用 M 站模板",
+  "lang": "cn",
+  "note": "无数小站共用同一套模板，用通配域名靠用户自行添加站点规则；此处给出字段布局作为新增站点模板 默认不在界面列表里展示（hidden: true）。",
+  "domains": [
+    "example-dm-template.invalid"
+  ],
+  "comic": {
+    "title": {
+      "css": "h1, .bookName",
+      "text": true
+    },
+    "author": {
+      "css": ".booktitle a, .info a",
+      "text": true,
+      "all": true
+    },
+    "cover": {
+      "css": ".bookimg img",
+      "attr": "src"
+    },
+    "status": {
+      "css": ".bookInfo p:nth-child(3)",
+      "text": true
+    },
+    "description": {
+      "css": ".intro",
+      "text": true
+    }
+  },
+  "chapters": {
+    "list": {
+      "css": "#chapterlist a"
+    },
+    "title": {
+      "text": true
+    }
+  },
+  "pages": {
+    "list": {
+      "css": ".showimg img"
+    },
+    "lazy_js": "\\[(?:'|\")(https?://[^'\"]+?\\.(?:jpg|jpeg|png|webp))(?:'|\")\\]"
+  },
+  "hidden": true
+}

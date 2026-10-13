@@ -1,0 +1,87 @@
+{
+  "id": "dmanhua",
+  "name": "D漫画 dmanhua",
+  "lang": "cn",
+  "note": "详情 /comic/<id>.html，章节 /chapter/<漫画id>-<章节id>.html。章节页不逐张列图，只下发一个目录前缀 var pasd 和总张数 var num=eval(\"41\")，图片按 前缀+序号+'.webp' 拼出来——所以要靠 pages.lazy_js 的「前缀+序号范围」模式（prefix/count），只靠选择器只能拿到 1 张 loading.svg。",
+  "domains": [
+    "dmanhua.com",
+    "www.dmanhua.com",
+    "m.dmanhua.com"
+  ],
+  "search_url": "https://www.dmanhua.com/search?query={q}",
+  "headers": {
+    "Referer": "https://www.dmanhua.com/",
+    "Accept-Language": "zh-CN,zh;q=0.9"
+  },
+  "comic": {
+    "title": {
+      "css": "h1",
+      "text": true
+    },
+    "cover": {
+      "css": ".cover img",
+      "attr": "data-src"
+    },
+    "author": {
+      "css": ".comic-info .author, .info .author",
+      "text": true
+    },
+    "description": {
+      "css": ".description",
+      "text": true
+    }
+  },
+  "chapters": {
+    "list": {
+      "css": "ul.chapter-list li a, .chapter-list a, a[href*='/chapter/']"
+    },
+    "url_re": "/chapter/\\d+-\\d+\\.html$",
+    "api": {
+      "url": "https://www.dmanhua.com/comic/{id}",
+      "method": "POST",
+      "data": {},
+      "list": "data.chapters",
+      "title": "chapterName",
+      "chapter_url": "/chapter/{contentId}-{id}.html",
+      "headers": {
+        "Content-Type": "application/json",
+        "Referer": "https://www.dmanhua.com/",
+        "Origin": "https://www.dmanhua.com"
+      },
+      "note": "详情页只渲染 24 话（实测 5758 共 70 话、6614 共 64 话），其余藏在「加载更多」后面：页面 JS 用 fetch('/comic/'+id,{method:'POST',body:'{}'}) 拿全量。与 dingmanhua 同源模板。"
+    }
+  },
+  "pages": {
+    "list": {
+      "css": ".images img.comic-image"
+    },
+    "url": {
+      "attr": "data-src"
+    },
+    "lazy_js": {
+      "prefix": "var\\s+pasd\\s*=\\s*[\"']([^\"']+)[\"']",
+      "count": "var\\s+num\\s*=\\s*eval\\(\\s*[\"']?(\\d+)[\"']?\\s*\\)"
+    },
+    "start": 1,
+    "suffix": ".webp",
+    "filter": "image1\\.dmanhua\\.com/.*\\.webp(?:\\?|$)"
+  },
+  "search": {
+    "url": "https://www.dmanhua.com/search?query={q}",
+    "list": {
+      "css": "div.card-content"
+    },
+    "link": {
+      "css": "a[href]",
+      "attr": "href"
+    },
+    "title": {
+      "css": "h3.cardtitle",
+      "text": "direct"
+    },
+    "cover": {
+      "css": "img.lazy",
+      "attr": "data-src"
+    }
+  }
+}

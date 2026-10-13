@@ -1,0 +1,62 @@
+{
+  "id": "dongmanmanhua",
+  "name": "咚漫漫画 LINE WEBTOON",
+  "lang": "cn",
+  "note": "详情页是 /<题材>/<拼音>/list?title_no=<id>（如 /LOVE/dibaodebaizhou/list?title_no=2892），章节页是 /<题材>/<拼音>/<第N话>/viewer?title_no=<id>&episode_no=<n>。viewer 页正文图放在 <img class=\"_images _centerImg\" data-url=\"...\">，src 是占位图 bg_transparency.png，所以必须用 pages.attr=data-url + filter 指向 cdn.dongmanmanhua.cn。章节列表分页 ?page=N。｜本版不支持站内搜索（搜索结果由 /js/search.js 的 jindo 组件异步请求填充，SSR 页面里没有任何作品链接）；可在搜索页用「打开网址…」直接粘贴作品页地址下载。 默认不在界面列表里展示（hidden: true）。",
+  "domains": [
+    "dongmanmanhua.cn",
+    "www.dongmanmanhua.cn",
+    "m.dongmanmanhua.cn",
+    "dongmanmanhua.com",
+    "www.dongmanmanhua.com"
+  ],
+  "search_url": "",
+  "headers": {
+    "Accept-Language": "zh-CN,zh;q=0.9"
+  },
+  "comic": {
+    "title": {
+      "css": "h1.subj",
+      "text": true
+    },
+    "author": {
+      "css": "span.author",
+      "text": true
+    },
+    "cover": {
+      "css": "meta[property='og:image']",
+      "attr": "content"
+    },
+    "description": {
+      "css": "p.summary",
+      "text": true
+    },
+    "status": {
+      "css": "p.day_info",
+      "text": true
+    }
+  },
+  "chapters": {
+    "list": {
+      "css": "a[href*='/viewer']"
+    },
+    "url": {
+      "attr": "href"
+    },
+    "url_re": "episode_no=\\d+",
+    "next": {
+      "css": "a[href*='page=']",
+      "attr": "href"
+    },
+    "paginated": true,
+    "max_pages": 30
+  },
+  "pages": {
+    "list": {
+      "css": "img._centerImg"
+    },
+    "attr": "data-url",
+    "filter": "^https?://cdn\\.dongmanmanhua\\.cn/.*\\.(?:jpg|jpeg|png|webp)(?:\\?|$)"
+  },
+  "hidden": true
+}

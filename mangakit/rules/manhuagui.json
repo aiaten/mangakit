@@ -1,0 +1,27 @@
+{
+  "id": "manhuagui",
+  "name": "漫画柜",
+  "lang": "cn",
+  "note": "漫画柜 mhquan.com，页面结构以 JSON-LD + Vue 数据为主。注意：站点防火墙对普通浏览器 UA 全站返回非标状态码 702（拦截页含「触发防火墙规则(417)」），此时会报「被站点防火墙拦截」；需要稍后重试或换用其它入口。改用伪装爬虫 UA 绕过风控属于规避站方反爬措施，本程序不做。",
+  "domains": ["mhquan.com", "www.mhquan.com", "manhuagui.com", "www.manhuagui.com"],
+  "comic": {
+    "title": {"css": "h1.title, h1"},
+    "author": {"css": ".info p a, .author a", "text": true},
+    "cover": {"css": ".book_cover img, .cover img", "attr": "src"},
+    "tags": {"css": ".tags a", "text": true, "all": true},
+    "description": {"css": ".book_d_info, .intro", "text": true}
+  },
+  "chapters": {
+    "list": {"css": "#chapterlist a, .chapter-list li a, .volumes li a"}
+  },
+  "pages": {
+    "list": {"css": "#pageSelect option, .pagebar option", "attr": "value"},
+    "lazy_js": "var\\s+chapterInfo\\s*=\\s*(\\{.*?\\});"
+  },
+  "search": {
+    "url": "https://mhquan.com/search?q={q}",
+    "list": {"css": ".search_list li, .book_list li"},
+    "link": {"attr": "href"},
+    "title": {"css": "h2 a", "text": true}
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "id": "songzimanhua",
+  "name": "松子漫画 songzimanhua.com",
+  "lang": "cn",
+  "note": "详情 /book/<id>/，章节 /read/<id>/。章节页正文是 img.reader-page-image（src 直给，不是懒加载属性）。详情页章节目录在 div#all-chapters（作品太新时只有 2 章属正常）。搜索 /search/?q=，结果卡片是 a.comic-card（标题在 strong 里，封面在 img[src]）。",
+  "domains": [
+    "songzimanhua.com",
+    "www.songzimanhua.com"
+  ],
+  "search_url": "https://songzimanhua.com/search/?q={q}",
+  "headers": {
+    "Accept-Language": "zh-CN,zh;q=0.9"
+  },
+  "comic": {
+    "title": {
+      "css": "h1",
+      "text": "direct"
+    },
+    "cover": {
+      "css": "meta[property='og:image']",
+      "attr": "content"
+    },
+    "author": {
+      "css": ".detail-meta span, .author-name",
+      "text": true,
+      "all": true
+    },
+    "description": {
+      "css": ".detail-intro, .detail-desc",
+      "text": true
+    }
+  },
+  "chapters": {
+    "list": {
+      "css": "#all-chapters a[href*='/read/'], .latest-chapter-row a[href*='/read/']"
+    },
+    "url_re": "/read/\\d+/$"
+  },
+  "pages": {
+    "list": {
+      "css": "img.reader-page-image"
+    },
+    "url": {
+      "attr": "src"
+    },
+    "filter": "^https?://img\\.songzimanhua\\.com/.*\\.(?:jpg|jpeg|png|webp)(?:\\?|$)"
+  },
+  "search": {
+    "url": "https://songzimanhua.com/search/?q={q}",
+    "list": {
+      "css": "a.comic-card[href^='/book/']"
+    },
+    "link": {
+      "attr": "href"
+    },
+    "title": {
+      "css": "strong",
+      "text": "direct"
+    },
+    "cover": {
+      "css": "img",
+      "attr": "src"
+    }
+  }
+}

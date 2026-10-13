@@ -1,0 +1,64 @@
+{
+  "id": "manhuahome",
+  "name": "漫画之家 manhuahome",
+  "lang": "cn",
+  "note": "苹果CMS 模板站。章节页把图片塞在 JS 变量 player_aaaa 的 url 字段里，用 '|||' 分隔，靠 pages.lazy_js 提取。",
+  "domains": [
+    "manhuahome.com",
+    "www.manhuahome.com"
+  ],
+  "search_url": "https://www.manhuahome.com/search.html?wd={q}",
+  "headers": {
+    "Referer": "https://www.manhuahome.com/",
+    "Accept-Language": "zh-CN,zh;q=0.9"
+  },
+  "comic": {
+    "title": {
+      "css": "h1",
+      "text": true
+    },
+    "cover": {
+      "css": ".mg-banner-cover img, .mg-banner-cover",
+      "attr": "data-original"
+    },
+    "author": {
+      "css": ".mg-info-section p, .mg-info-section",
+      "text": true
+    },
+    "description": {
+      "css": ".mg-info-section .mg-des",
+      "text": true
+    }
+  },
+  "chapters": {
+    "list": {
+      "css": ".mg-chapter-list a[href*='/chapter/']"
+    }
+  },
+  "pages": {
+    "list": {
+      "css": ".mg-manga-reader img, .mg-manga-info img, img[class*='manga']"
+    },
+    "lazy_js": "\"url\"\\s*:\\s*\"([^\"]+)\"",
+    "split": "|||",
+    "filter": "\\.(?:jpg|jpeg|png|webp|gif)(?:\\?|$)"
+  },
+  "search": {
+    "url": "https://www.manhuahome.com/search.html?wd={q}",
+    "list": {
+      "css": "div.mg-search-item"
+    },
+    "link": {
+      "css": "a.mg-search-thumb",
+      "attr": "href"
+    },
+    "title": {
+      "css": ".mg-search-name a",
+      "text": "direct"
+    },
+    "cover": {
+      "css": "a.mg-search-thumb",
+      "attr": "data-original"
+    }
+  }
+}
