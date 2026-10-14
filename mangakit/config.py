@@ -6,11 +6,15 @@ import json
 import logging
 import os
 import sys
+import tempfile
 import threading
 from pathlib import Path
 from typing import Any
 
 _log = logging.getLogger(__name__)
+
+# _dev_sandbox() 的进程级缓存：同一进程内 app_dir() 必须始终返回同一目录
+_dev_home: Path | None = None
 
 
 def _warn(msg: str) -> None:
@@ -20,6 +24,42 @@ def _warn(msg: str) -> None:
         print(f"[mangakit] 警告：{msg}", file=sys.stderr)
     except Exception:  # noqa: BLE001 —— stderr 都坏了就别再抛
         pass
+
+
+def _dev_sandbox() -> Path | None:
+    """从仓库 tools/ 目录下起的脚本，自动改到进程级临时目录。
+
+    返回 None 表示「这是正常使用，用真目录」。判定依据是**启动脚本的位置**
+    （`sys.argv[0]`），不是 cwd，也不会因为 os.chdir 而误判：
+    只有在 `tools/xxx.py` 且仓库里确实有 `mangakit/` 包时才算开发态。
+
+    这样做的理由是 t_fix_check.py 的教训：它自己不调任何写接口，但驱动
+    `MangaPage._on_comic` 时产品代码内部 `store().add_favorite()` 就落库了，
+    「会不会写」根本没法静态判断。隔离必须发生在数据目录这一层。
+    """
+    if os.environ.get("MANGAKIT_ALLOW_REAL_HOME"):
+        return None
+    if getattr(sys, "frozen", False):
+        return None                     # 打包后的 exe 不是开发态
+    argv0 = sys.argv[0] if sys.argv else ""
+    if not argv0 or not argv0.endswith(".py"):
+        return None                     # 交互式解释器 / -c：不猜，照旧
+    script = Path(argv0)
+    if script.parent.name != "tools":
+        return None                     # 便宜的字符串判断放前面，避免每次都 resolve
+    try:
+        script = script.resolve()
+    except OSError:
+        return None
+    if not (script.parent.parent / "mangakit" / "__init__.py").is_file():
+        return None                     # 只是恰好叫 tools/ 的别的项目
+    # 同一进程复用同一个沙箱目录（多次调用 app_dir() 必须一致）
+    global _dev_home
+    if _dev_home is None:
+        _dev_home = Path(tempfile.mkdtemp(prefix="mk_dev_"))
+        _warn(f"检测到从 tools/ 下运行，数据目录已隔离到 {_dev_home}；"
+              f"确需连真库请设 MANGAKIT_ALLOW_REAL_HOME=1")
+    return _dev_home
 
 
 def app_dir() -> Path:
@@ -34,6 +74,16 @@ def _resolve_home() -> Path:
     override = os.environ.get("MANGAKIT_HOME")
     if override:
         return Path(override)
+    # 开发态护栏：从仓库 tools/ 目录下起的脚本一律改到临时目录。
+    # 起因是 2026-10-14 的真实事故：tools\gui_smoke.py 没有设 MANGAKIT_HOME，
+    # 而它驱动的界面代码里 MangaPage._on_comic 会自动 add_favorite()，
+    # 于是测试把用户真实的收藏清空了。问题在于「这个脚本会不会写库」无法靠
+    # 静态检查预测——写操作藏在产品代码里——所以这里做单点兜底：
+    # 只要进程是从 tools\ 里起的，就绝不碰 %APPDATA%\mangakit。
+    # 真要连真库调试，显式设 MANGAKIT_ALLOW_REAL_HOME=1。
+    dev = _dev_sandbox()
+    if dev is not None:
+        return dev
     if os.name == "nt":
         base = Path(os.environ.get("APPDATA") or Path.home())
     else:

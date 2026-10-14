@@ -864,11 +864,34 @@ class TasksPage(QWidget):
 
 # ==================================================================== 收藏页
 
+def _row_prev_total(row: Any) -> int:
+    """从收藏行里取「上一次检查时的章节数」。
+
+    优先读 base_total（每次检查时冻住的旧值）。老库还没有这一列、或它还是
+    -1 时，退回 last_total（那其实是"最近一次"的章节数，勉强能用），再退回
+    last_index + 1 —— 更老版本里 last_index 存的是列表位置，其值 +1 就是
+    当时的章节数。都没有就给 -1，界面上显示「—」。
+    """
+    for key in ("base_total", "last_total"):
+        try:
+            v = int(row[key])
+            if v >= 0:
+                return v
+        except (KeyError, IndexError, TypeError, ValueError):
+            pass
+    try:
+        idx = int(row["last_index"])
+        return idx + 1 if idx >= 0 else -1
+    except (KeyError, IndexError, TypeError, ValueError):
+        return -1
+
+
 class FavoritesPage(QWidget):
     open_comic = Signal(object)
 
-    # 表格列：0 漫画 1 作者 2 来源 3 最新章节 4 网站状态 5 上次检查 6 网址
-    COL_TITLE, COL_AUTHOR, COL_SITE, COL_LATEST, COL_STATE, COL_CHECKED, COL_URL = range(7)
+    # 表格列：0 漫画 1 作者 2 来源 3 最新章节 4 上次章节数 5 状态 6 上次检查 7 网址
+    (COL_TITLE, COL_AUTHOR, COL_SITE, COL_LATEST, COL_PREV, COL_STATE,
+     COL_CHECKED, COL_URL) = range(8)
 
     def __init__(self, svc: ComicService, parent=None):
         super().__init__(parent)
@@ -894,10 +917,15 @@ class FavoritesPage(QWidget):
         bar.addWidget(self.btn_refresh)
         lay.addLayout(bar)
 
-        self.table = QTableWidget(0, 7)
+        self.table = QTableWidget(0, 8)
         self.table.setHorizontalHeaderLabels(
-            ["漫画", "作者", "来源", "最新章节", "状态", "上次检查", "网址"])
+            ["漫画", "作者", "来源", "最新章节", "上次章节数", "状态", "上次检查", "网址"])
         self.table.horizontalHeader().setStretchLastSection(True)
+        # 「上次检查」才有意义的那一列给个提示，免得和「上次检查」时间列搞混
+        self.table.horizontalHeaderItem(4).setToolTip(
+            "上一次检查时源站共多少话。\n"
+            "和本次的章节数对比，就能看出到底有没有更新。\n"
+            "本次章节数在「状态」列的悬停提示里。")
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         # 支持多选（Ctrl/Shift 点），才能一次删掉好几条、也能只检查选中的
@@ -935,9 +963,57 @@ class FavoritesPage(QWidget):
 
     # ---- 渲染 ----
     @staticmethod
+    def _fmt_latest(title: str, no: int, index: int) -> str:
+        """「最新章节」单元格文本：优先原标题，没标题才回退拼一个。"""
+        if title:
+            return title
+        if no >= 0:
+            return f"第 {no} 话"
+        if index >= 0:
+            return f"第 {index + 1} 话"      # 连话号都抠不出来，只能按位置报
+        return ""
+
+    @staticmethod
+    def _prev_cell(row: Any, up: Any) -> Any:
+        """「上次章节数」单元格：上一次检查时源站有多少话。
+
+        两个取值来源，按调用场景分工：
+        - `row` 有值（`reload()` 整表重画）：以**库里存的**为准 ——
+          `base_total` 是上次检查后冻住的旧值，`last_total` 是本次值。
+          这样检查跑完、甚至重启软件之后，这一列仍然对得上。
+        - `row` 为 None（`_paint_row()` 就地刷某一行）：用本轮内存里的
+          `up.prev_total` / `up.total`，避免依赖刚写库的时序。
+        """
+        if row is not None:
+            prev = _row_prev_total(row)
+            try:
+                t = int(row["last_total"])
+                now = t if t >= 0 else -1
+            except (KeyError, IndexError, TypeError, ValueError):
+                now = -1
+        else:
+            prev = getattr(up, "prev_total", -1) if up is not None else -1
+            now = int(getattr(up, "total", 0) or -1) if up is not None else -1
+
+        cell = QTableWidgetItem("—" if prev < 0 else f"{prev} 话")
+        if prev < 0:
+            cell.setForeground(QBrush(QColor("#999")))
+            cell.setToolTip("还没检查过，没有可对比的基准")
+            return cell
+
+        tip = [f"上次检查时源站共 {prev} 话"]
+        if now >= 0:
+            delta = now - prev
+            tip.append(f"本次 {now} 话"
+                       + (f"（{'多' if delta > 0 else '少'} {abs(delta)} 话）" if delta
+                          else "（没变）"))
+        cell.setToolTip("\n".join(tip))
+        if now >= 0 and now != prev:
+            cell.setForeground(QBrush(QColor("#c60")))
+        return cell
+
+    @staticmethod
     def _fmt_checked(ts: Any) -> str:
-        if not ts:
-            return "从未"
         try:
             t = float(ts)
         except (TypeError, ValueError):
@@ -970,8 +1046,8 @@ class FavoritesPage(QWidget):
             latest = QTableWidgetItem("")
             state = QTableWidgetItem("")
             if up is not None:
-                latest.setText(up.latest_title or (f"第 {up.latest_index + 1} 话"
-                                                   if up.latest_index >= 0 else ""))
+                latest.setText(self._fmt_latest(up.latest_title, up.latest_no,
+                                                up.latest_index))
                 state.setText(up.display)
                 if up.status == "new":
                     state.setForeground(QBrush(QColor("#c60")))   # 橙色 = 有更新
@@ -980,7 +1056,11 @@ class FavoritesPage(QWidget):
                     state.setForeground(QBrush(QColor("#c33")))
                 elif up.status == "first":
                     state.setForeground(QBrush(QColor("#4a9")))
-                state.setToolTip(up.message or up.display)
+                # 悬停能看到「本轮拿什么比出来的、两边各是多少」，出问题时不用猜
+                tip = [up.message or up.display]
+                if up.total:
+                    tip.append(f"本次章节数：{up.total}")
+                state.setToolTip("\n".join(tip))
             else:
                 # 还没检查过，但至少把「这站支持不支持检查」告诉用户
                 st = self._support_state(r["site"])
@@ -989,6 +1069,7 @@ class FavoritesPage(QWidget):
                 state.setForeground(QBrush(QColor("#999")) if st[0] != "可检查"
                                     else QBrush(QColor("#666")))
             self.table.setItem(i, self.COL_LATEST, latest)
+            self.table.setItem(i, self.COL_PREV, self._prev_cell(r, up))
             self.table.setItem(i, self.COL_STATE, state)
             self.table.setItem(i, self.COL_CHECKED,
                                QTableWidgetItem(self._fmt_checked(r["last_check"])))
@@ -1116,11 +1197,13 @@ class FavoritesPage(QWidget):
             self.lb_count.setText(f"正在检查 {len(self._updates)}/{self._check_total} 本…")
 
     def _paint_row(self, i: int, up: Any) -> None:
-        latest = QTableWidgetItem(up.latest_title
-                                  or (f"第 {up.latest_index + 1} 话"
-                                      if up.latest_index >= 0 else ""))
+        latest = QTableWidgetItem(self._fmt_latest(up.latest_title, up.latest_no,
+                                                   up.latest_index))
         state = QTableWidgetItem(up.display)
-        state.setToolTip(up.message or up.display)
+        tip = [up.message or up.display]
+        if up.total:
+            tip.append(f"本次章节数：{up.total}")
+        state.setToolTip("\n".join(tip))
         if up.status == "new":
             state.setForeground(QBrush(QColor("#c60")))
             latest.setForeground(QBrush(QColor("#c60")))
@@ -1130,6 +1213,9 @@ class FavoritesPage(QWidget):
             state.setForeground(QBrush(QColor("#4a9")))
         self.table.setItem(i, self.COL_LATEST, latest)
         self.table.setItem(i, self.COL_STATE, state)
+        # 「上次章节数」保持本轮开始时快照的旧值（up.prev_total），别跟着刷成新的，
+        # 否则刚查完这一列就变成了"本次"，跟没加这一列一样、没法对比。
+        self.table.setItem(i, self.COL_PREV, self._prev_cell(None, up))
 
     def on_update_done(self, rid: int, stat: Any):
         if rid != getattr(self, "_rid", None):

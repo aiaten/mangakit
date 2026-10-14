@@ -2,12 +2,19 @@
 
 这才是用户实际会走的路：加完站点后重启，注册表从 user_rules 装载规则，
 `registry().for_url(url)` 找站点、拿适配器、解析章节、下图片。
+
+注意：本脚本会 add_user_rule / remove_user_rule 写 config.user_rules，
+所以必须先把数据目录隔离到临时位置，绝不能动用户的真配置
+（2026-10-14 收藏清空事故的同类风险）。
 """
-import sys, asyncio, json
+import sys, asyncio, json, os, tempfile
 from pathlib import Path
 # 仓库根 = 本文件(tools/)的上一级。以前这里写死了一个绝对路径，
 # 项目换盘/换目录后就会 import 不到 mangakit —— 改成自动定位。
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+# 必须在 import mangakit 之前：config 的数据目录由 MANGAKIT_HOME 决定。
+os.environ.setdefault("MANGAKIT_HOME", tempfile.mkdtemp(prefix="mk_roundtrip_"))
 
 import mangakit.config as cfgmod
 from mangakit.probe import SiteProber, add_user_rule, remove_user_rule

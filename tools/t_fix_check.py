@@ -6,12 +6,18 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+# 隔离护栏：本文件全文没调任何写接口，但驱动 MangaPage._on_comic 时产品代码
+# 内部会 store().add_favorite() —— 2026-10-14 的事故里这条记录就落进了用户真库
+# （tools\_incident\）。写操作藏在产品代码里，静态判断不了，必须显式隔离。
+# config._dev_sandbox() 也会兜底，这里写明是为了不再依赖兜底。
+os.environ.setdefault("MANGAKIT_HOME", tempfile.mkdtemp(prefix="mk_fix_"))
 
 FAILS: list[str] = []
 

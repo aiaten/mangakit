@@ -1,13 +1,13 @@
 # 漫卷 MangaKit
 
-> 版本 **0.2.0** ｜ 通用漫画批量下载器 ｜ Windows
+> 版本 **0.3.0** ｜ 通用漫画批量下载器 ｜ Windows
 
 **漫卷 MangaKit 是一个本地规则驱动的漫画下载软件**：把漫画网站的页面结构写成 JSON 规则，
 由程序直接抓取详情页、章节列表和图片地址并下载。它**不走任何第三方服务器**，
 全部解析在你自己电脑上完成。
 
 *（上面这段自我描述与版本号引自 `使用文档.md` 开头的版本栏与
-`mangakit/__init__.py` 里的 `__version__`，两处当前都是 **0.2.0**。
+`mangakit/__init__.py` 里的 `__version__`，两处当前都是 **0.3.0**。
 本文所有对文档的引用一律按**章节名**给出，不写行号 —— 那份文档在改的时候行号会漂。）*
 
 ## 给谁用
@@ -76,7 +76,7 @@
 
 ### 收藏与追更
 
-- 打开过的漫画自动进收藏（漫画 / 作者 / 来源 / 最新章节 / 状态 / 上次检查 / 网址）。
+- 打开过的漫画自动进收藏（漫画 / 作者 / 来源 / 最新章节 / **上次章节数** / 状态 / 上次检查 / 网址）。
 - 标题过滤，多选 + 右键菜单删除，删除前一律弹确认。
 - **检查更新**：**并发 6 路**同时查（单本就是一个详情页请求）。
   实测 8 本：串行 3.0 秒 → 6 路并发 **0.38 秒**（见 `使用文档.md` 的
@@ -84,6 +84,15 @@
   单本最多等 45 秒，超时记一笔继续下一本，不会让某一本卡死整次检查；
   查询失败的**不覆盖基准**，只检查成功的才更新。
   首次检查只记基线（绿色「已记录当前进度」），之后再点才对比出「有 N 话更新」。
+- **「最新章节」按话号取，不按列表位置**（v0.3.0）：有些站章节是**倒序**的，
+  旧版取「列表最后一条」，检查完《香格里拉》会显示成「第 1 话」。
+  现在用严格话号正则取最大话号（`第12话` / `Chapter 12` / `第3卷`…），
+  认不出话号的条目（如「2026新年贺图」）不参与比较；若过半条目都认不出话号，
+  整站退回按列表位置。实站验证：manhuagui_cc《香格里拉》254 话，
+  旧逻辑取到 index 253 = 「第1话 你为何而游戏」，新逻辑正确取到最高话号。
+- **「上次章节数」列**（v0.3.0）：显示**上一次**检查时源站的话数，
+  与本次结果并列即可看出有没有更新（涨/跌标橙，悬停给出「1060 话 → 1068 话」）。
+  点完检查后这一列**仍显示旧值**（不是本次结果），否则等于白加这一列。
 
 ### 站点管理
 
@@ -360,7 +369,7 @@ mangakit/
 │   ├── test_block.py            WAF / 站方故障页识别 + 头值编码的离线回归
 │   ├── test_write_guard.py      目录不可写时是否报人话而非裸 PermissionError
 │   ├── exe_smoke.py             打包后 exe 的端到端冒烟（多站各下 2 张）
-│   ├── gui_smoke.py             打包 exe 的 GUI 冒烟（52 条断言）
+│   ├── gui_smoke.py             打包 exe 的 GUI 冒烟（53 条断言）
 │   ├── t_exe_ver.py             打包时序核对：exe 是否比源码旧
 │   ├── t_yck_convert.py         图源转换回归：真抓真转真下载（29 项）
 │   ├── t_gui_new_pages.py       新页面回归：图源仓库 + 内置浏览器（56 项）
@@ -412,7 +421,13 @@ python selfcheck.py
 python tools\test_block.py          # WAF 拦截识别、站方故障页识别、Referer 头中文编码
 python tools\test_write_guard.py    # 目录不可写时必须报人话（WriteDenied）而非裸 PermissionError
 python tools\t_gui_new_pages.py     # v0.2.0 新增两页：图源仓库 + 内置浏览器，56 项断言
+python tools\t_updates2.py          # 检查更新：话号解析 14 例 + latest_chapter 7 例 + 判定口径，47 项
+python tools\t_gui_fav.py           # 收藏页 8 列与「上次章节数」列，9 组断言
+python tools\check_isolation.py     # ★ 数据隔离护栏：从 tools\ 起的脚本必须落到临时目录
+python tools\check_dev_guard.py     # ★ 反向验证：四种正常启动方式必须拿到真库
 ```
+
+> **改 `tools\` 下任何脚本后，最后两条必跑。** 原因见下方「数据隔离」一节。
 
 `test_write_guard.py` 防的回归：曾经下载器**先抓页、后检查目录能不能写**，
 用户要等抓完十几张图才看到一句 `PermissionError: [WinError 5] 拒绝访问`。
@@ -442,7 +457,7 @@ python tools\verify.py comicwang kanman   # 只验某几个
 
 > 注意：`tools\verify.out.json` 与 `tools\_smoke\` 都是**跑测试时在本地产出的东西**，
 > 已经被 `.gitignore` 排除，不会进仓库 —— 你在 GitHub 上看不到它们是正常的，
-> 本文引用的 19/19、52 条、56 条与 29 项断言都来自**本机实跑的那一份**，自己跑一遍即可复现。
+> 本文引用的 19/19、53 条、56 条与 29 项断言都来自**本机实跑的那一份**，自己跑一遍即可复现。
 
 ### 第 3.5 层：图源转换的真跑回归（联网）
 
@@ -468,7 +483,7 @@ python tools\t_exe_ver.py           # 核对 exe 是否比源码旧 —— 打�
 ```bash
 python tools\exe_smoke.py           # 每个站单独准备 MANGAKIT_HOME，跑 --url --get 1 --limit 2
                                     # 然后检查磁盘上真的落盘了图片（实测 6/6 站有图）
-python tools\gui_smoke.py           # 起一次打包 exe，确认窗口存活 30 秒不秒退 + 52 条界面断言
+python tools\gui_smoke.py           # 起一次打包 exe，确认窗口存活 30 秒不秒退 + 53 条界面断言
 MangaKit.exe --selftest report.txt  # 最省事的整体自查，末尾须为 SELFTEST PASS（含 webengine 项）
 ```
 
@@ -476,7 +491,7 @@ MangaKit.exe --selftest report.txt  # 最省事的整体自查，末尾须为 SE
 `gui_smoke.py` 抓两类只在打包后才暴露的问题：onefile 解包失败
 （弹 `Could not create temporary directory!`）与 stdout 编码把中文打成 ascii。
 
-> 实测 **52 条断言全 PASS、退出码 0**（见 `使用文档.md` 的
+> 实测 **53 条断言全 PASS、退出码 0**（见 `使用文档.md` 的
 > 「九、目录结构（源码）→ 冒烟脚本分工」一节；
 > 断言条数与 `tools/gui_smoke.py` 里的 `PASS]` 打印逐一核对得 52）。
 > 里面有**九个**纯离线的界面检查：站点下拉完整性、章节勾选链路、「展开全部章节」按钮、
@@ -485,7 +500,7 @@ MangaKit.exe --selftest report.txt  # 最省事的整体自查，末尾须为 SE
 >
 > 改动章节列表、下载按钮、搜索页、收藏页、设置页、详情页或切页逻辑后**必跑**。
 >
-> **注意这 52 条不含 v0.2.0 新增的两个页面** —— 「图源仓库」与「内置浏览器」
+> **注意这 53 条不含 v0.2.0 新增的两个页面** —— 「图源仓库」与「内置浏览器」
 > 的回归在 `tools\t_gui_new_pages.py`（56 项，见第 2 层）与
 > `tools\t_yck_convert.py`（29 项，见第 3.5 层）。三层加起来才是完整口径。
 >
@@ -511,13 +526,52 @@ python tools\t_publish.py -m "修好搜索翻页"    # 自定义提交信息
 tag 默认取 `mangakit/__init__.py` 里的 `__version__`（加 `v` 前缀）。
 脚本用绝对路径探测 `git` / `gh`（本机 `git` 不在 PATH 上），失败时会打印**真实 stderr** 并停下。
 
+### 数据隔离（★ 改 `tools\` 下脚本前必读）
+
+这里记的是一次**真实数据事故**及其护栏，不是理论风险。
+
+**事故**：2026-10-14，用户的收藏被清空。定位结果是
+`tools\gui_smoke.py` 的界面检查函数直接调了 `store().clear_favorites()`，
+而该脚本**没有隔离数据目录** → `store()` 落到 `%APPDATA%\mangakit\mangakit.db`，
+也就是用户的真库。测试先清空、塞 4 条测试数据、最后再清一次。
+
+**为什么不能靠静态检查防**：第一版护栏想通过扫源码里的写接口来判断危险脚本，
+结果它**放过了 `tools\t_fix_check.py`** —— 该文件全文没有写接口，却照样写进了真库，
+因为写操作藏在产品代码内部：
+
+```
+MangaPage._on_comic  →  内部自动 store().add_favorite()
+```
+
+「这个脚本会不会写」在静态层面无法判定，所以护栏必须做成**运行时单点防护**。
+
+**现在的护栏**：
+
+| 层 | 位置 | 作用 |
+| --- | --- | --- |
+| 单点防护（主要） | `mangakit/config.py` 的 `_dev_sandbox()` | 只要进程由 `<仓库>\tools\xxx.py` 启动，数据目录一律改到 `%TEMP%\mk_dev_xxxx`，绝不碰 `%APPDATA%\mangakit` |
+| 显式声明（辅助） | 各测试脚本顶部设 `MANGAKIT_HOME` | 必须在**任何 `import mangakit` 之前**，否则配置已按真目录读入 |
+| 逃生门 | 环境变量 `MANGAKIT_ALLOW_REAL_HOME=1` | 确需连真库调试时用 |
+
+判定依据是启动脚本路径（`sys.argv[0]`）而非当前目录，所以 `os.chdir` 不会误判。
+
+**正常使用不受影响**：`python -m mangakit`、`python main.py`、打包后的 exe、
+用户自己设的 `MANGAKIT_HOME` 都照常拿真库 —— `tools\check_dev_guard.py` 逐条验证这四种。
+
+**最有说服力的一条证据**：把当年肇事的那套测试（`tools\gui_smoke.py`，含
+「清空收藏生效」这条断言）对真库跑一遍，跑完 `mangakit.db` 的 SHA256 **逐位不变**。
+
+> 取证资料（冻结的数据库副本、字节级打捞脚本、恢复出的收藏清单）保留在
+> `tools\_incident\`，**已加进 `.gitignore`** —— 里面是本机用户的真实数据库副本，
+> 绝不能被提交或外发。
+
 ---
 
 ## 打包说明
 
 - 配置：`mangakit.spec`，用 `python -m PyInstaller --noconfirm --clean mangakit.spec`。
 - 产物：`dist\MangaKit.exe`，**onefile**（单文件）、**windowed**（双击不弹黑框）。
-- **实测体积 174.6 MB**（174,621,961 字节，`dist\MangaKit.exe`，2026-10-13 23:36:17 构建）。
+- **实测体积 174.6 MB**（174,632,103 字节，`dist\MangaKit.exe`，2026-10-14 21:31:01 构建）。
   v0.1.0 时代是 63.4 MB —— 涨上来的部分基本就是 QtWebEngine 那套 Chromium 运行库。
 - 站点规则以 data 文件形式打包（`datas` 里 `mangakit/rules` → `_MEIPASS/mangakit/rules`），
   运行时 `main.py` 会把 `MANGAKIT_RULES_DIR` 指过去，所以**规则跟着 exe 走**。
@@ -664,11 +718,11 @@ v0.1.0 那会儿 `__version__` 一直是 `0.1.0`，而你手上那个 exe 可能
 （`search_done` 回的是列表而非总数，且没有 `search_partial`）—— 见 `使用文档.md`
 的「九、目录结构（源码）→ 冒烟脚本分工」一节。
 
-现在版本号已抬到 **0.2.0**，而且 **exe 内嵌了版本资源**（`assets/version_info.txt`，
+现在版本号已抬到 **0.3.0**，而且 **exe 内嵌了版本资源**（`assets/version_info.txt`，
 版本号从 `mangakit/__init__.py` 的 `__version__` 现读），所以确认方式很直接：
 
 1. **看属性（最直接）**：右键 `MangaKit.exe` → 属性 → **详细信息** →
-   看 **FileVersion**。是 `0.2.0` 就是新版；`0.1.0` 或空白就是老的。
+   看 **FileVersion**。是 `0.3.0` 就是新版；`0.2.0`/`0.1.0` 或空白就是老的。
 2. **跑自检**：`MangaKit.exe --selftest report.txt`，末尾 `SELFTEST PASS` 且
    含 `webengine` 项才算完整的新版（老 exe 没有 webengine 这一项）。
 3. **跑时序核对**（改代码后自查最有用）：
@@ -745,6 +799,6 @@ kanman 的图片地址带时间戳签名，正确做法是**重新打开该章�
 
 ## 许可
 
-漫卷 MangaKit v0.2.0 ｜ 仅供个人学习与离线备份使用。
+漫卷 MangaKit v0.3.0 ｜ 仅供个人学习与离线备份使用。
 
 下载的内容请自行遵守各站点的使用条款。完整使用说明见 [使用文档.md](使用文档.md)。

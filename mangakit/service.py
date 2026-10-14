@@ -221,14 +221,14 @@ class ComicService:
 
         async def one(row) -> None:
             site_id, url, title = row["site"], row["url"], row["title"]
-            prev = int(row["last_index"]) if row["last_index"] is not None else -1
+            prev = _prev_baseline(row)
             async with sem:
                 # 单本最多等 per_book 秒。没有这层闸门时，一个卡住不回的站
                 # 会把整次「检查更新」无限期拖住（按钮永远停在「检查中…」），
                 # 而且它排在前面的书已经查完也看不到汇总。
                 try:
                     up = await asyncio.wait_for(
-                        self._check_one(reg, site_id, url, title, prev),
+                        self._check_one(reg, site_id, url, title, *prev),
                         timeout=per_book)
                 except asyncio.TimeoutError:
                     up = FavoriteUpdate(site_id, url, title, status="error",
@@ -242,12 +242,11 @@ class ComicService:
                     stat["new"] += 1
                 elif up.status == "error":
                     stat["error"] += 1
-                # 成功见到章节就记住这次的位置，下次才有对比基准。
+                # 成功见到章节就记住这次的进度，下次才有对比基准。
                 # error/unsupported 只更新时间，不动基线，免得把没查成当成了"没更新"。
-                if up.status in ("ok", "new"):
-                    store().mark_favorite_checked(site_id, url, up.latest_index)
-                elif up.status == "first":
-                    store().mark_favorite_checked(site_id, url, up.latest_index)
+                if up.status in ("ok", "new", "first"):
+                    store().mark_favorite_checked(site_id, url, up.latest_index,
+                                                  up.total, up.latest_no)
                 else:
                     store().mark_favorite_checked(site_id, url, None)
                 br.update_partial.emit(rid, up)
@@ -257,8 +256,8 @@ class ComicService:
 
     @staticmethod
     async def _check_one(reg, site_id: str, url: str, title: str,
-                         prev_index: int) -> "FavoriteUpdate":
-        from .models import FavoriteUpdate
+                         prev_total: int = -1, prev_no: int = -1) -> "FavoriteUpdate":
+        from .models import FavoriteUpdate, latest_chapter
 
         site = reg.sites.get(site_id)
         if site is None or not site.enabled:
@@ -281,22 +280,86 @@ class ComicService:
             return FavoriteUpdate(site_id, url, title, status="error",
                                   message="这个站没解析出任何章节")
 
-        latest = max(ch.index for ch in chs)
-        newest = max(chs, key=lambda c: c.index)
+        # 「最新章节」按话号最大者取，不按列表位置 —— 倒序站（列表第一条是
+        # 最新话）按位置取最大会取到第 1 话，这正是「检查完变成第一章」的原因。
+        newest = latest_chapter(chs)
         total = len(chs)
+        latest_no = newest.no
 
-        if prev_index < 0:
+        common = dict(latest_index=newest.index, latest_no=latest_no,
+                      latest_title=newest.title, total=total,
+                      prev_total=prev_total, prev_no=prev_no)
+
+        if prev_total < 0 and prev_no < 0:
             # 第一次检查：只记基线，不谎报"有更新"
-            return FavoriteUpdate(site_id, url, title, latest_index=latest,
-                                  latest_title=newest.title, total=total,
-                                  new_count=0, status="first",
-                                  message="首次检查，已记录当前进度")
-        new_count = latest - prev_index
+            return FavoriteUpdate(site_id, url, title, new_count=0, status="first",
+                                  message="首次检查，已记录当前进度", **common)
+
+        # 两个信号各算一遍，取大者：
+        #  - 章节数差（主）：与排列顺序无关，倒序站也稳。
+        #  - 话号差（补）：有的站会删旧话，总数不变但话号在涨。
+        # 取 max 是为了都不漏；任一侧算不出来就只用另一侧。
+        by = ""
+        new_count = 0
+        if prev_total >= 0:
+            new_count = max(0, total - prev_total)
+            by = "count"
+        if prev_no >= 0 and latest_no >= 0 and latest_no > prev_no:
+            grown = sum(1 for c in chs if c.no > prev_no)
+            if grown > new_count:
+                new_count, by = grown, "no"
+        if not by:
+            by = "count"
+
+        message = _delta_note(prev_total, total, prev_no, latest_no, by)
         if new_count <= 0:
-            return FavoriteUpdate(site_id, url, title, latest_index=latest,
-                                  latest_title=newest.title, total=total,
-                                  new_count=0, status="ok")
-        return FavoriteUpdate(site_id, url, title, latest_index=latest,
-                              latest_title=newest.title, total=total,
-                              new_count=new_count, status="new")
+            return FavoriteUpdate(site_id, url, title, new_count=0, status="ok",
+                                  by=by, message=message, **common)
+        return FavoriteUpdate(site_id, url, title, new_count=new_count, status="new",
+                              by=by, message=message, **common)
+
+
+def _prev_baseline(row) -> tuple[int, int]:
+    """从收藏行算出上次的对比基准 (章节数, 话号)。
+
+    - 章节数：老版本没写 last_total 时，用 `last_index + 1` 顶替 —— 那个版本
+      的 last_index 存的就是「列表最后一项的位置」，也就是当时的章节数 - 1，
+      所以 +1 正好还原。两者都没有（从未检查过）时给 -1。
+    - 话号：只认 last_no。老库里的 last_index 是位置序号、不是话号，拿它当
+      话号比会凭空多报一话，所以宁可给 -1 让它重新记一次基线。
+    """
+    total = -1
+    try:
+        t = int(row["last_total"])
+        if t >= 0:
+            total = t
+    except (KeyError, IndexError, TypeError, ValueError):
+        pass
+    if total < 0:
+        try:
+            idx = int(row["last_index"])
+            if idx >= 0:
+                total = idx + 1
+        except (KeyError, IndexError, TypeError, ValueError):
+            pass
+    no = -1
+    try:
+        n = int(row["last_no"])
+        if n >= 0:
+            no = n
+    except (KeyError, IndexError, TypeError, ValueError):
+        pass
+    return total, no
+
+
+def _delta_note(prev_total: int, total: int, prev_no: int, latest_no: int,
+                by: str) -> str:
+    """给状态列做 tooltip：这次是拿什么比出来的、两边各是多少。"""
+    basis = "章节数" if by == "count" else "话号"
+    parts = [f"按{basis}对比"]
+    if prev_total >= 0:
+        parts.append(f"章节数 {prev_total} → {total}")
+    if prev_no >= 0 and latest_no >= 0:
+        parts.append(f"最新话号 {prev_no} → {latest_no}")
+    return "；".join(parts)
 

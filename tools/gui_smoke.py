@@ -10,12 +10,21 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 EXE = ROOT / "dist" / "MangaKit.exe"
 BASE = ROOT / "tools" / "_smoke" / "gui"
+
+# ── 隔离护栏：必须在 import mangakit 之前打好 ──────────────────────────────
+# config._resolve_home() 优先读 MANGAKIT_HOME，没设就落在 %APPDATA%\mangakit，
+# 也就是用户的真库。本文件里的检查函数会直接调 store() 增删收藏，2026-10-14
+# 就是因为缺这一行，把用户真实收藏清空了（tools\_incident\ 保留了取证）。
+# 任何在本进程内 import mangakit 的测试都必须先设好这个变量。
+os.environ.setdefault("MANGAKIT_HOME", tempfile.mkdtemp(prefix="mk_smoke_"))
+_HOME_IS_TEMP = Path(os.environ["MANGAKIT_HOME"]).name.startswith("mk_")
 
 
 def check_site_picker() -> bool:
@@ -561,18 +570,24 @@ def check_add_site() -> bool:
         dlg2.close()
 
         # --- 写进 user_rules → 重载 → 列表里出现 [自建] ---
+        # 先数一下本来就有的自建站：测试跑在用户真实 config 上，机器上可能
+        # 早就有自建站（比如上一轮测试留下的），断言不能写死「自建 1」。
+        from mangakit.config import config as _cfg
+        n_before = len(_cfg().get("user_rules") or [])
         add_user_rule(r_ok.rule)
         reload_registry()
         page.reload()
         app.processEvents()
         names = [page.tbl_sites.item(r, 1).text() for r in range(page.tbl_sites.rowCount())]
         marked = any("[自建]" in n and "Y 站" in n for n in names)
-        cnt_shown = "自建 1" in page.lb_sites.text()
+        want = f"自建 {n_before + 1}"
+        cnt_shown = want in page.lb_sites.text()
         print(f"[{'PASS' if marked else 'FAIL'}] 自建站点在列表里带 [自建] 标记"
               + ("" if marked else f"，当前列表：{names[-3:]}"))
         print(f"[{'PASS' if cnt_shown else 'FAIL'}] 底部统计自建站点数量"
+              + f"（原有 {n_before} 个，加 1 后应显示「{want}」）"
               + ("" if cnt_shown else f" → 「{page.lb_sites.text()}」"))
-        ok &= marked
+        ok &= marked and cnt_shown
 
         # --- 内置站点不可删 ---
         builtin_row = None
@@ -725,7 +740,28 @@ def check_double_click_open() -> bool:
         return False
 
 
+def _assert_isolated() -> bool:
+    """开跑前确认数据目录确实隔离，绝不碰用户真库。
+
+    这是 2026-10-14 收藏清空事故的直接护栏：当时本文件没设 MANGAKIT_HOME，
+    检查函数里的 store() 直接落在 %APPDATA%\\mangakit\\mangakit.db 上。
+    """
+    from mangakit.config import app_dir
+    d = app_dir().resolve()
+    home = Path(os.environ["MANGAKIT_HOME"]).resolve()
+    ok = d == home
+    appdata = Path(os.environ.get("APPDATA") or Path.home()) / "mangakit"
+    if not ok or d == appdata.resolve():
+        print(f"[FAIL] 数据目录未隔离：app_dir()={d}")
+        print("       测试会打到用户真库上，已中止。")
+        return False
+    print(f"[PASS] 数据目录已隔离：{d}")
+    return True
+
+
 def main() -> int:
+    if not _assert_isolated():
+        return 3
     picker_ok = check_site_picker()
     chapters_ok = check_chapter_picker()
     expand_ok = check_expand_button()

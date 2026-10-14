@@ -7,16 +7,22 @@
   ④ 设置页列表里出现 [自建] 行
   ⑤ 引擎能解析该站
   ⑥ 点「删除站点」把它删掉，配置回到原样
+
+注意：本脚本走真实 GUI、会把规则写进 config.user_rules，所以必须先把数据
+目录隔离到临时位置，绝不能动用户的真配置（2026-10-14 收藏清空事故的同类风险）。
 """
 from __future__ import annotations
 
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
+# 必须在任何 mangakit import 之前：数据目录由 MANGAKIT_HOME 决定。
+os.environ.setdefault("MANGAKIT_HOME", tempfile.mkdtemp(prefix="mk_gui_addsite_"))
 
 URL = sys.argv[1] if len(sys.argv) > 1 else "https://songzimanhua.com/book/15293/"
 

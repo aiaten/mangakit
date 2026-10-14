@@ -68,6 +68,19 @@ _MEI*/
 # 想把它当发布存证就删掉这一行。
 /tools/verify.out.json
 
+# 一次性排查脚本（tools\_xxx.py 约定：下划线前缀 = 用完即弃的探针）。
+# 正式测试脚本不带下划线（t_updates.py / gui_smoke.py / check_*.py），不要忽略。
+/tools/_*.py
+/tools/_*.txt
+/tools/_*.json
+
+# 2026-10-14 收藏清空事故的取证与备份目录。
+# **里面是本机用户的真实 mangakit.db 副本，绝不能提交**：
+#   mangakit.db.frozen                  事故现场冻结副本（含真实收藏残字节）
+#   mangakit.db.pre-restore-*           写回前的备份
+#   mangakit.db.pre-clean-*             清理测试数据前的备份
+/tools/_incident/
+
 # ---------------------------------------------------------------------
 # 4. Python 缓存
 # ---------------------------------------------------------------------

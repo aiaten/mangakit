@@ -8,14 +8,22 @@
   ⑤ 首图真能下载
   ⑥ 站内搜索可用
   ⑦ 清理掉测试规则，不留痕
+
+注意：本脚本会写 config.user_rules，必须先把数据目录隔离到临时位置，
+绝不能动用户的真配置（2026-10-14 收藏清空事故的同类风险）。
 """
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+# 必须在 import mangakit 之前：config 的数据目录由 MANGAKIT_HOME 决定。
+os.environ.setdefault("MANGAKIT_HOME", tempfile.mkdtemp(prefix="mk_roundtrip2_"))
 
 import mangakit.sites as sm  # noqa: E402
 from mangakit.probe import (  # noqa: E402

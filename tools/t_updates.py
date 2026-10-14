@@ -1,10 +1,11 @@
 """真机验证：收藏更新检查。
 
 用松子漫画（songzimanhua，1068 话）当样本：
-  ① 收藏一本 -> 清掉 last_index -> 第一次检查应报「首次检查」
-  ② 把 last_index 人为调小 5 -> 再检查应报「有 5 话更新」
-  ③ last_index 调到当前值 -> 再检查应报「无更新」
-  ④ 不存在的站点 -> 应报「检查失败/不支持」
+  ① 收藏一本 -> 清掉基线 -> 第一次检查应报「首次检查」，并把三个基线字段写进库
+  ② 把基线人为调小 5 -> 再检查应报「有 5 话更新」
+  ③ 基线调到当前值 -> 再检查应报「无更新」
+  ④ 总数不变、话号涨 -> 应报「有更新」（靠话号基准发现）
+  ⑤ 不存在的站点 -> 应报「检查失败/不支持」
 用法： python tools\t_updates.py
 """
 from __future__ import annotations
@@ -62,33 +63,59 @@ def main() -> int:
     _wait(events, expect_done=1, timeout=120)
     up = _first_update(events)
     print(f"② 首次检查 -> status={up.status} new_count={up.new_count} "
-          f"latest_index={up.latest_index} total={up.total}")
+          f"latest_index={up.latest_index} latest_no={up.latest_no} total={up.total}")
     print(f"   最新章节 = {up.latest_title!r}")
     row = test_store.one("SELECT * FROM favorites WHERE site=? AND url=?", (SITE, BOOK))
     baseline = row["last_index"]
-    print(f"   库里的基线已记录 = {baseline}")
+    print(f"   库里的基线已记录 = index:{baseline} "
+          f"total:{row['last_total']} no:{row['last_no']}")
     assert up.status in ("first", "ok"), f"首次检查状态异常: {up.status}"
     assert baseline >= 0, "首次检查没把基线写进库"
+    assert row["last_total"] == up.total, "首次检查没把章节数基线写进库"
+    assert row["last_no"] == up.latest_no, "首次检查没把话号基线写进库"
     assert up.new_count == 0, "首次检查不该谎报更新"
+    # 「最新章节」必须是话号最大的那一话，不能是列表末尾
+    assert up.latest_no >= 0, f"没解析出话号: {up.latest_title!r}"
 
     # ---------- 人为把基线调小 5 ----------
-    test_store.mark_favorite_checked(SITE, BOOK, baseline - 5)
+    # 三个基准一起调：只调 last_index 是没用的（它只是列表位置，判断更新不看它）
+    test_store.mark_favorite_checked(SITE, BOOK, baseline,
+                                     up.total - 5, up.latest_no - 5)
     events.clear()
     rid = svc.check_updates()
     _wait(events, expect_done=1, timeout=120)
     up = _first_update(events)
     print(f"③ 基线调小 5 后 -> status={up.status} new_count={up.new_count} "
-          f"display={up.display!r}")
+          f"by={up.by} display={up.display!r}")
     assert up.status == "new" and up.new_count == 5, f"应报 5 话更新，实为 {up.status}/{up.new_count}"
     assert up.has_update is True
 
+    # ---------- 总数不变、话号涨 3（模拟站方删了两话又加了三话）----------
+    # 注意：这里**不能断言 new_count == 3**。真实站点的话号是**有跳号**的
+    # （实测 songzimanhua 1068 话里话号只到 1162，中间缺号、还有重复号），
+    # 所以「话号涨了 3」不等于「多了 3 话」。代码数的是「旧最高话号之上
+    # 实际存在几话」，这才是对用户有意义的口径。这里只断言「靠话号发现了
+    # 更新」；精确计数在离线套件 tools\t_updates2.py 里用可控数据验证。
+    test_store.mark_favorite_checked(SITE, BOOK, baseline,
+                                     up.total, up.latest_no - 3)
+    events.clear()
+    rid = svc.check_updates()
+    _wait(events, expect_done=1, timeout=120)
+    up = _first_update(events)
+    print(f"④ 总数不变、话号涨 3 -> status={up.status} new_count={up.new_count} "
+          f"by={up.by}")
+    assert up.status == "new" and up.new_count >= 1, \
+        f"应靠话号报出更新，实为 {up.status}/{up.new_count}"
+    assert up.by == "no", f"应是由话号发现的更新，实为 {up.by}"
+
     # ---------- 基线调回当前值 ----------
-    test_store.mark_favorite_checked(SITE, BOOK, up.latest_index)
+    test_store.mark_favorite_checked(SITE, BOOK, up.latest_index,
+                                     up.total, up.latest_no)
     events.clear()
     rid = svc.check_updates()
     _wait(events, expect_done=1, timeout=120)
     up2 = _first_update(events)
-    print(f"④ 基线为最新时 -> status={up2.status} new_count={up2.new_count} "
+    print(f"⑤ 基线为最新时 -> status={up2.status} new_count={up2.new_count} "
           f"display={up2.display!r}")
     assert up2.status == "ok" and up2.new_count == 0, "不该报更新"
     assert up2.has_update is False
@@ -101,7 +128,7 @@ def main() -> int:
     _wait(events, expect_done=1, timeout=60)
     ups = [e for e in events if not isinstance(e, tuple)]
     bad = [u for u in ups if u.site == "nope_site"]
-    print(f"⑤ 未知站点 -> status={bad[0].status} message={bad[0].message!r}")
+    print(f"⑥ 未知站点 -> status={bad[0].status} message={bad[0].message!r}")
     assert bad and bad[0].status == "unsupported", "未知站点应报不支持"
     # 坏站点不该把基线写成 0 以外的值
     row = test_store.one("SELECT * FROM favorites WHERE site=?", ("nope_site",))
@@ -112,7 +139,7 @@ def main() -> int:
     rid = svc.check_updates([(SITE, BOOK)])
     _wait(events, expect_done=1, timeout=120)
     ups = [e for e in events if not isinstance(e, tuple)]
-    print(f"⑥ 只检查选中 1 本 -> 收到 {len(ups)} 条结果（应为 1）")
+    print(f"⑦ 只检查选中 1 本 -> 收到 {len(ups)} 条结果（应为 1）")
     assert len(ups) == 1, "筛选没生效"
 
     mgr.stop()
