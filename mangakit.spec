@@ -6,8 +6,9 @@ r"""PyInstaller 打包配置：生成单文件 exe（漫卷 MangaKit）。
 产物：
     dist/MangaKit.exe
 
-双击 exe 即可运行，不需要任何外挂 bat —— 启动画面、图标、版本资源、
-启动自检（下载目录可写性）都已经在本配置和 mangakit/main.py 里做进 exe。
+双击 exe 即可运行，不需要任何外挂 bat —— 图标、版本资源、启动自检
+（下载目录可写性）都已经在本配置和 mangakit/main.py 里做进 exe。
+（启动画面在 v0.3.1 移除，原因见下方 EXE() 前的长注释。）
 
 几个「不知道就会踩坑」的点，改本文件前先读：
 
@@ -43,8 +44,9 @@ _ASSETS = os.path.join(_HERE, "assets")
 # 站点规则以数据文件形式打包（用户可在运行时目录里覆盖/新增）
 datas = [
     (os.path.join("mangakit", "rules"), os.path.join("mangakit", "rules")),
-    # 启动画面与图标也一并打进 datas：splash 图由 bootloader 用，图标已作为
-    # exe 资源，但留一份在包内便于「关于」页/后续替换皮肤时读取。
+    # 图标与 splash 图一并打进 datas：图标已作为 exe 资源，这里留一份便于
+    # 「关于」页读取；splash.png 自 v0.3.1 起不再被 bootloader 使用（启动画面
+    # 已移除），仍随包分发以便将来恢复或做皮肤。
     (_ASSETS, "assets"),
 ]
 
@@ -121,20 +123,34 @@ a.datas = [d for d in a.datas if "devtools_resources" not in d[0]]
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
-# 启动画面。splash.png 是 600x340：左侧是圆角图标，中右侧是标题
-# 「漫卷 MangaKit」+ 副标题 + 一条青色下划线，底部留了一条深色窄带。
-# 因此进度文字放左下的深色带上（与图标左边缘对齐、避开中间的标题区），
-# 颜色取偏亮的浅灰蓝，在深色带上清晰又不抢眼。
-splash = Splash(
-    os.path.join(_ASSETS, "splash.png"),
-    binaries=a.binaries,
-    datas=a.datas,
-    text_pos=(24, 314),          # 距左下角：与图标左对齐，落在底部深色带内
-    text_size=10,
-    text_color="#9fc4e8",
-    text_font="Microsoft YaHei UI",
-    text_default="正在启动…",     # 解包还没开始时显示；之后由 main.py 逐条 update_text
-)
+# ────────────────────────────────────────────────────────────────────────
+# 启动画面：**已移除**（v0.3.1 起）。
+#
+# 原来这里有 `splash = Splash(assets/splash.png, ...)`，并在 EXE() 里传
+# `splash, splash.binaries`。移除的两个原因：
+#
+# 1) 用户反馈「打开程序时弹出的那个 tk 小窗口能否不显示」。PyInstaller 的
+#    splash 在 Windows 上用 Tcl/Tk 实现（`excludes` 里的 "tkinter" 只排 Python
+#    层绑定，挡不住 bootloader 自带的 splash），所以它必然以 Tk 窗口形式出现。
+#
+# 2) 它其实一直是**坏的**：`text_font="Microsoft YaHei UI"` 带空格，
+#    PyInstaller 的模板 `splash_templates.py:154` 直接写成
+#        font create myFont -family Microsoft YaHei UI -size 10
+#    没有加引号，Tcl 在脚本第 30 行左右就抛
+#        bad option "YaHei": must be -family, -size, -weight, ...
+#    而 `wm overrideredirect` / `wm geometry` 在脚本末尾才执行，于是 Tk 退回
+#    默认窗口：**216x239、带标题栏、标题 `tk`、内容全空白**，横在主窗口前面
+#    约 5 秒。实测复跑内嵌脚本确认（`_mk_res/Splash-00.res` → 真 Tk 解释器）：
+#    给字体名加引号后整段即通过（600x340、overrideredirect=1、图正常加载）。
+#
+# 若将来要恢复启动画面：把下面这段 Splash(...) 和 EXE() 里的两个参数加回来，
+# 并把 text_font 改成带引号的写法 —— `text_font='"Microsoft YaHei UI"'`
+# （模板是原样拼接，需要自己带上引号）。代价：exe 增大约 1.7MB（tcl86t.dll
+# 905KB + tk86t.dll 707KB + Splash-00.res 62KB + splash.png 60KB）。
+#
+# 移除后：onefile 解包 + import 那 5 秒左右完全没有窗口，主窗口直接出现。
+# assets/splash.png 仍随 datas 打包（供「关于」页等后续使用），不影响启动。
+# ────────────────────────────────────────────────────────────────────────
 
 exe = EXE(
     pyz,
@@ -142,8 +158,6 @@ exe = EXE(
     a.binaries,
     a.zipfiles,
     a.datas,
-    splash,
-    splash.binaries,
     name="MangaKit",
     debug=False,
     bootloader_ignore_signals=False,

@@ -60,19 +60,63 @@ def _bootstrap() -> None:
         sys.path.insert(0, pkg_parent)
 
 
-def _splash_update(text: str) -> None:
-    """更新启动画面上的进度文字（源码运行时静默无操作）。
+_splash_state: bool | None = None
+"""进程级缓存：None = 还没判定过（见 _splash_available）。
 
-    `pyi_splash` 这个模块只有 PyInstaller 在 spec 里写了 Splash() 时才存在，
-    源码运行 `import pyi_splash` 会 ModuleNotFoundError；即使是打包版，
-    splash 关掉之后 update_text 也会抛 RuntimeError。所以这里两层兜：
-    先取模块，再逐个调用都包 try/except —— 启动画面永远不该把程序搞崩。
+必须缓存，不能每次现查环境变量：`pyi_splash` 在 import 成功后会自己
+`del os.environ['_PYI_SPLASH_IPC']`，第二次查就查不到了 —— 那样
+`_splash_close()` 会被误判成「没有启动画面」而漏掉关闭。
+"""
+
+
+def _splash_available() -> bool:
+    """当前进程里是否真的挂了启动画面（决定能不能 import pyi_splash）。
+
+    ★ 必须先看环境变量，不能直接 `import pyi_splash`。
+    PyInstaller 的 pyi_splash.py 在**模块级**就执行
+    `_ipc_port = int(os.environ['_PYI_SPLASH_IPC'])`，读不到就走进
+    `except (KeyError, ValueError)` 分支，往日志里写一条 warning **外加
+    traceback**（日志里表现为 `KeyError: '_PYI_SPLASH_IPC'`）：
+    "The environment does not allow connecting to the splash screen."
+
+    这个副作用发生在 import 那一刻，函数内的 try/except 拦不住。
+    而 `_PYI_SPLASH_IPC` 是 bootloader 在真的有 splash 时才设的：
+      - spec 里写了 Splash() → 变量存在，值是该 TCP 端口；
+      - splash 被优雅抑制（如子进程）→ 变量设为 "0"；
+      - spec 里没有 Splash()（v0.3.1 起）→ 变量**根本不存在**，
+        于是每次启动都白刷一条 warning + traceback 进用户日志。
+    所以这里用「变量在不在」当开关：没有 splash 时压根不 import，
+    `pyi_splash` 从未被加载，那条警告也就不会再出现。
     """
-    try:
-        import pyi_splash  # type: ignore[import-not-found]  # 仅打包态存在
-    except Exception:  # noqa: BLE001
+    global _splash_state
+    if _splash_state is None:
+        if os.environ.get("_PYI_SPLASH_IPC") is None:
+            _splash_state = False
+        else:
+            try:
+                import pyi_splash  # type: ignore[import-not-found]  # 仅打包态存在
+
+                _splash_state = bool(getattr(pyi_splash, "_initialized", False))
+            except Exception:  # noqa: BLE001
+                _splash_state = False
+    return _splash_state
+
+
+def _splash_update(text: str) -> None:
+    """更新启动画面上的进度文字（没有启动画面时静默无操作）。
+
+    背景：v0.3.1 起 spec 里已移除 `Splash()`，所以打包态下本函数同样是空操作
+    —— 留着是为了将来恢复启动画面时不用再改这 5 个调用点。
+
+    两层兜：先 `_splash_available()` 判断该不该碰这个模块（见那里的说明，
+    直接 import 会往日志吐警告），再逐个调用都包 try/except
+    —— 启动画面永远不该把程序搞崩。
+    """
+    if not _splash_available():
         return
     try:
+        import pyi_splash  # type: ignore[import-not-found]
+
         if pyi_splash.is_alive():
             pyi_splash.update_text(text)
     except Exception:  # noqa: BLE001
@@ -81,11 +125,11 @@ def _splash_update(text: str) -> None:
 
 def _splash_close() -> None:
     """关掉启动画面（主窗口已经显示出来之后调用）。"""
-    try:
-        import pyi_splash  # type: ignore[import-not-found]
-    except Exception:  # noqa: BLE001
+    if not _splash_available():
         return
     try:
+        import pyi_splash  # type: ignore[import-not-found]
+
         pyi_splash.close()
     except Exception:  # noqa: BLE001
         pass

@@ -1,13 +1,13 @@
 # 漫卷 MangaKit
 
-> 版本 **0.3.0** ｜ 通用漫画批量下载器 ｜ Windows
+> 版本 **0.3.2** ｜ 通用漫画批量下载器 ｜ Windows
 
 **漫卷 MangaKit 是一个本地规则驱动的漫画下载软件**：把漫画网站的页面结构写成 JSON 规则，
 由程序直接抓取详情页、章节列表和图片地址并下载。它**不走任何第三方服务器**，
 全部解析在你自己电脑上完成。
 
 *（上面这段自我描述与版本号引自 `使用文档.md` 开头的版本栏与
-`mangakit/__init__.py` 里的 `__version__`，两处当前都是 **0.3.0**。
+`mangakit/__init__.py` 里的 `__version__`，两处当前都是 **0.3.2**。
 本文所有对文档的引用一律按**章节名**给出，不写行号 —— 那份文档在改的时候行号会漂。）*
 
 ## 给谁用
@@ -371,6 +371,7 @@ mangakit/
 │   ├── exe_smoke.py             打包后 exe 的端到端冒烟（多站各下 2 张）
 │   ├── gui_smoke.py             打包 exe 的 GUI 冒烟（53 条断言）
 │   ├── t_exe_ver.py             打包时序核对：exe 是否比源码旧
+│   ├── t_no_splash.py           启动窗口回归：归档无 splash 载荷 + 全程无 Tk 窗口
 │   ├── t_yck_convert.py         图源转换回归：真抓真转真下载（29 项）
 │   ├── t_gui_new_pages.py       新页面回归：图源仓库 + 内置浏览器（56 项）
 │   ├── t_probe.py / t_roundtrip2.py / t_gui_addsite.py   「添加网站」探测链路
@@ -380,7 +381,7 @@ mangakit/
 ├── mangakit.spec                PyInstaller 打包配置（正式 onefile 版，含 runtime_tmpdir）
 ├── assets/                      图标与启动图 / 版本资源（v0.2.0 起全部接进 exe）
 │   ├── mangakit.ico             程序图标（46866 B，**7 档尺寸 16-256**，已接入 spec）
-│   ├── splash.png               启动画面（60789 B，**600×340**，由 `Splash()` 使用）
+│   ├── splash.png               启动图（60789 B，**600×340**；v0.3.1 起不再被 bootloader 使用）
 │   └── version_info.txt         版本资源（3488 B，版本号从 `__init__.py` 的 `__version__` 现读）
 ├── 启动漫卷.bat                 备用启动器（可选）：兼容旧习惯 + 参数转发，双击 exe 即可运行
 ├── 使用文档.md                  完整使用文档（**以这一份为准**）
@@ -389,15 +390,41 @@ mangakit/
         改完 `.md` 后请重跑该脚本同步 `.txt`
 ```
 
-> 关于图标与启动画面（v0.2.0 已全部实现）：
+> 关于图标与启动画面：
 > `mangakit.spec` 现在写的是 `icon=os.path.join(_ASSETS, "mangakit.ico")`，
 > 所以 `dist\MangaKit.exe` 用的是**漫卷自己的图标**（7 档尺寸 16～256），
 > 不再是 PyInstaller 那个 32×32 的默认图标。
-> 启动画面由 spec 里的 `Splash(...)` 使用 `assets/splash.png`（600×340）加载，
-> `mangakit/main.py` 通过 `pyi_splash.update_text()` / `close()` 在自检各阶段
-> 更新文案（「正在检查运行环境…」→「正在加载界面…」→「正在打开主窗口…」），
-> 并做了两层兜底：`pyi_splash` 在源码运行时不存在、splash 关闭后再 update 会抛
-> `RuntimeError`，两种都咽掉，不会因此起不来。
+>
+> **启动画面在 v0.3.1 已移除。** v0.3.0 及更早的 spec 里有
+> `Splash(assets/splash.png, ...)`，它是用户看到「启动时冒出一个标题为 `tk`
+> 的空白小窗口、约 5 秒后才出现主界面」的原因——PyInstaller 的 splash 在
+> Windows 上用 Tcl/Tk 实现（`excludes` 里的 `"tkinter"` 只排 Python 层绑定，
+> 挡不住 bootloader 自带的 splash）。而且它**一直是坏的**：spec 里
+> `text_font="Microsoft YaHei UI"` 带空格，模板原样拼进 Tcl 脚本没加引号，
+> `font create myFont -family Microsoft YaHei UI -size 10` 处抛
+> `bad option "YaHei"`，而 `wm overrideredirect` / `wm geometry` 在脚本末尾
+> 才执行 —— Tk 于是退回默认窗口（216×239、带标题栏、标题 `tk`、内容全空白）。
+> 移除后 exe 小了约 1.7 MB（不再打包 `tcl86t.dll`+`tk86t.dll`+`Splash-00.res`），
+> 双击到主窗口出现**全程没有任何窗口**。
+> `mangakit/main.py` 里的 `_splash_update()` / `_splash_close()` **保留未删**
+> （现在是无害的空操作），以便将来要恢复时不用再改那 5 个调用点。
+> **若要恢复，字体名必须写成 `text_font='"Microsoft YaHei UI"'`（带引号）**，
+> 否则会原样退回上面那个空白小窗。回归项：`tools\t_no_splash.py`。
+>
+> **v0.3.2 补掉了移除 splash 留下的尾巴。** 移除 `Splash()` 之后 bootloader 不再设
+> `_PYI_SPLASH_IPC`，而 `_splash_update()` 里那句 `import pyi_splash` 会在**模块级**
+> 就抛 `KeyError`，被 `pyi_splash` 自己的 `except` 接住后往日志写一条 warning
+> **外加 traceback** —— 每次启动都刷，日志越来越脏，排查真问题时会被误导。
+> 修法是**先看环境变量再决定 import**（`mangakit/main.py` 的 `_splash_available()`）：
+> ```
+> if os.environ.get("_PYI_SPLASH_IPC") is None:
+>     return False        # 没有启动画面，不碰 pyi_splash
+> ```
+> 结果用模块级 `_splash_state` 缓存 —— `pyi_splash` import 成功后会自己删掉那个
+> 环境变量，现查的话第二次会误判成「没有启动画面」，`_splash_close()` 就会漏关。
+> 将来真恢复启动画面时，变量由 bootloader 提供，这段守卫自动放行，5 个调用点仍不用改。
+> 回归项：`tools\t_splash_guard.py`（离线桩模块）、`tools\t_no_splash.py` 第 ③ 层
+> （起一次 exe，断言日志里没有 `pyi_splash` 字样）。
 > 版本号由 `assets/version_info.txt` 作为 exe 的版本资源写入，
 > 内容从 `mangakit/__init__.py` 的 `__version__` 现读，不再手改。
 
@@ -425,9 +452,11 @@ python tools\t_updates2.py          # 检查更新：话号解析 14 例 + lates
 python tools\t_gui_fav.py           # 收藏页 8 列与「上次章节数」列，9 组断言
 python tools\check_isolation.py     # ★ 数据隔离护栏：从 tools\ 起的脚本必须落到临时目录
 python tools\check_dev_guard.py     # ★ 反向验证：四种正常启动方式必须拿到真库
+python tools\t_no_splash.py         # 启动窗口回归：不得再有 tk 启动画面（会起一次 exe，约 8 秒）
 ```
 
-> **改 `tools\` 下任何脚本后，最后两条必跑。** 原因见下方「数据隔离」一节。
+> **改 `tools\` 下任何脚本后，中间两条必跑。** 原因见下方「数据隔离」一节。
+> 改动 `mangakit.spec` 或重打包后，再补跑 `t_exe_ver.py` 与 `t_no_splash.py`。
 
 `test_write_guard.py` 防的回归：曾经下载器**先抓页、后检查目录能不能写**，
 用户要等抓完十几张图才看到一句 `PermissionError: [WinError 5] 拒绝访问`。
@@ -551,9 +580,13 @@ MangaPage._on_comic  →  内部自动 store().add_favorite()
 | --- | --- | --- |
 | 单点防护（主要） | `mangakit/config.py` 的 `_dev_sandbox()` | 只要进程由 `<仓库>\tools\xxx.py` 启动，数据目录一律改到 `%TEMP%\mk_dev_xxxx`，绝不碰 `%APPDATA%\mangakit` |
 | 显式声明（辅助） | 各测试脚本顶部设 `MANGAKIT_HOME` | 必须在**任何 `import mangakit` 之前**，否则配置已按真目录读入 |
+| 拉起 exe 的脚本自行隔离 | 测试脚本自己的 `MANGAKIT_HOME`（写进临时 `.bat`） | 打包后的 exe 不受 `_dev_sandbox()` 管（`sys.frozen` 必须放行，否则用户双击也被隔离），所以**起 exe 的测试必须自己把目录传进去**；且 WMI 子进程不继承脚本环境，得用临时 `.bat` 里的 `set` |
 | 逃生门 | 环境变量 `MANGAKIT_ALLOW_REAL_HOME=1` | 确需连真库调试时用 |
 
 判定依据是启动脚本路径（`sys.argv[0]`）而非当前目录，所以 `os.chdir` 不会误判。
+`tools\check_isolation.py` 除了跑探针，还会做一项**结构检查**：凡是会拉起 exe 的脚本
+都必须在 `_DECLARED_EXE_USERS` 里登记性质（`launch` / `upload`），新写的脚本漏登记会直接判失败 ——
+这条是写 `tools\t_no_splash.py` 时踩出来的：它用 WMI 起 exe，第一版把那轮观察直接打在了真库和真日志上。
 
 **正常使用不受影响**：`python -m mangakit`、`python main.py`、打包后的 exe、
 用户自己设的 `MANGAKIT_HOME` 都照常拿真库 —— `tools\check_dev_guard.py` 逐条验证这四种。
@@ -571,8 +604,9 @@ MangaPage._on_comic  →  内部自动 store().add_favorite()
 
 - 配置：`mangakit.spec`，用 `python -m PyInstaller --noconfirm --clean mangakit.spec`。
 - 产物：`dist\MangaKit.exe`，**onefile**（单文件）、**windowed**（双击不弹黑框）。
-- **实测体积 174.6 MB**（174,632,103 字节，`dist\MangaKit.exe`，2026-10-14 21:31:01 构建）。
+- **实测体积 172.9 MB**（172,923,118 字节，`dist\MangaKit.exe`，2026-10-15 00:16:06 构建）。
   v0.1.0 时代是 63.4 MB —— 涨上来的部分基本就是 QtWebEngine 那套 Chromium 运行库。
+  v0.3.1 移除启动画面后比 v0.3.0 小了约 1.7 MB（不再打包 Tcl/Tk 那套 DLL）。
 - 站点规则以 data 文件形式打包（`datas` 里 `mangakit/rules` → `_MEIPASS/mangakit/rules`），
   运行时 `main.py` 会把 `MANGAKIT_RULES_DIR` 指过去，所以**规则跟着 exe 走**。
 - 解包目录固定：`runtime_tmpdir=r'%LOCALAPPDATA%\MangaKit\run'`，不再往 `%TEMP%` 里塞，
@@ -591,10 +625,10 @@ MangaPage._on_comic  →  内部自动 store().add_favorite()
 GitHub 对**单个 Git 对象**有 **100 MB** 硬上限，对 **Release 资产**单个文件上限 **2 GB**。
 所以 exe 一律**只作为 Release 附件上传，不提交进 Git 仓库**（`.gitignore` 已排除 `dist/` 与 `*.exe`）。
 
-- 当前正式版 exe **174.6 MB，已经超过 100 MB 的 Git 对象上限** ——
+- 当前正式版 exe **172.9 MB，已经超过 100 MB 的 Git 对象上限** ——
   所以「只走 Release 附件」在 v0.2.0 起**不再是可选项，而是硬要求**：
   想提交进仓库会直接被 GitHub 拒收。
-- 下载者也因此要接受 **174 MB+** 的体积，这是启用内置浏览器换来的代价
+- 下载者也因此要接受 **172 MB+** 的体积，这是启用内置浏览器换来的代价
   （对比：不含 WebEngine 的 v0.1.0 是 63.4 MB）。
 
 ---
@@ -670,12 +704,13 @@ GitHub 对**单个 Git 对象**有 **100 MB** 硬上限，对 **Release 资产**
 ### QtWebEngine / 内置浏览器怎么这么大？
 
 **内置浏览器已经实现**（v0.2.0，导航第 7 项），所以 QtWebEngine 的那套 Chromium
-运行库是真的打进 exe 了 —— 这就是体积从 63.4 MB 涨到 **174.6 MB** 的原因：
+运行库是真的打进 exe 了 —— 这就是体积从 63.4 MB 涨到 **172.9 MB** 的原因：
 
 | 项 | 实测 |
 | --- | --- |
-| 正式版 exe 体积 | **174,621,961 字节（≈174.6 MB）**，2026-10-13 23:36:17 构建 |
-| 对比 v0.1.0（无 WebEngine） | 63.4 MB —— 差出来的约 111 MB 基本就是 Chromium |
+| 正式版 exe 体积 | **172,923,118 字节（≈172.9 MB）**，2026-10-15 00:16:06 构建（v0.3.2） |
+| 对比 v0.1.0（无 WebEngine） | 63.4 MB —— 差出来的约 109 MB 基本就是 Chromium |
+| v0.3.1 减掉的 | 约 1.7 MB（移除启动画面，不再打包 `tcl86t.dll` 905 KB + `tk86t.dll` 707 KB + `Splash-00.res` 62 KB） |
 | 被过滤掉的调试资源 | `qtwebengine_devtools_resources*.pak`，实测 **83.4 MB**（只给 F12 远程调试用） |
 | 渲染进程 | QtWebEngine 会拉起独立的 `QtWebEngineProcess.exe` 子进程 |
 | 首次进入耗时 | 约 3-4 秒（懒加载，见上文 FAQ） |
@@ -718,11 +753,13 @@ v0.1.0 那会儿 `__version__` 一直是 `0.1.0`，而你手上那个 exe 可能
 （`search_done` 回的是列表而非总数，且没有 `search_partial`）—— 见 `使用文档.md`
 的「九、目录结构（源码）→ 冒烟脚本分工」一节。
 
-现在版本号已抬到 **0.3.0**，而且 **exe 内嵌了版本资源**（`assets/version_info.txt`，
+现在版本号已抬到 **0.3.2**，而且 **exe 内嵌了版本资源**（`assets/version_info.txt`，
 版本号从 `mangakit/__init__.py` 的 `__version__` 现读），所以确认方式很直接：
 
 1. **看属性（最直接）**：右键 `MangaKit.exe` → 属性 → **详细信息** →
-   看 **FileVersion**。是 `0.3.0` 就是新版；`0.2.0`/`0.1.0` 或空白就是老的。
+   看 **FileVersion**。是 `0.3.2` 就是最新版；`0.3.1`/`0.3.0`/`0.2.0`/`0.1.0` 或空白就是老的。
+   另外 `0.3.1` 起**双击后不应再出现任何 `tk` 小窗口**（那是老版的坏启动画面）；
+   `0.3.2` 起**日志里不应再有 `pyi_splash` 警告**（`%APPDATA%\mangakit\logs\mangakit.log`）。
 2. **跑自检**：`MangaKit.exe --selftest report.txt`，末尾 `SELFTEST PASS` 且
    含 `webengine` 项才算完整的新版（老 exe 没有 webengine 这一项）。
 3. **跑时序核对**（改代码后自查最有用）：
@@ -799,6 +836,6 @@ kanman 的图片地址带时间戳签名，正确做法是**重新打开该章�
 
 ## 许可
 
-漫卷 MangaKit v0.3.0 ｜ 仅供个人学习与离线备份使用。
+漫卷 MangaKit v0.3.1 ｜ 仅供个人学习与离线备份使用。
 
 下载的内容请自行遵守各站点的使用条款。完整使用说明见 [使用文档.md](使用文档.md)。
