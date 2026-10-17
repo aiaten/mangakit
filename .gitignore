@@ -69,6 +69,23 @@ _MEI*/
 # 含 6 个站的样本图与一个 146.6 MB 的 _MEI 解包目录）
 /tools/_smoke/
 
+# 离线测试脚本在仓库根留下的临时目录与导出产物。
+# 这些脚本都用 tempfile.mkdtemp(prefix="mk_...") 建临时目录，而本机 tmp 不可写时
+# tempfile 会退回当前工作目录，于是根目录会攒下一堆 mk_exp_xxx.cbz / mk_gui_fav_xxx\
+# / mk_home_xxx\ / mktest_xxx\。跑完就删是正解，但漏删一次就会污染 git add -A，
+# 所以在这里兜底（注意只兜这些前缀，别写成笼统的 mk_* 以免误伤真实文件）。
+/mk_exp_*
+/mk_adp_*
+/mk_fix_*
+/mk_gui_fav_*
+/mk_home_*
+/mk_t3_*
+/mk_dev_*
+/mk_epub_*
+/mk_fname_*
+/mktest_*
+/chk_*
+
 # tools\verify.py 的实网验证结果：每次跑都会重写（站点章节数天天变），
 # 想把它当发布存证就删掉这一行。
 /tools/verify.out.json

@@ -67,6 +67,9 @@ class DownloadManager:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._sem: asyncio.Semaphore | None = None
+        self._sem_n: int = 0
+        # 调小并发时，派出去「抓住多出来的许可不放」的占位协程。调大时先撤它们。
+        self._holders: list[asyncio.Future] = []
         self._tasks: dict[str, Task] = {}
         self._paused: set[str] = set()
         self._controls: dict[str, asyncio.Event] = {}
@@ -84,7 +87,9 @@ class DownloadManager:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             self._loop = loop
-            self._sem = asyncio.Semaphore(int(config().get("concurrency") or 6))
+            n = int(config().get("concurrency") or 6)
+            self._sem = asyncio.Semaphore(n)
+            self._sem_n = n
             loop.call_soon(ready.set)
             loop.run_forever()
 
@@ -104,6 +109,50 @@ class DownloadManager:
             pass
         self._loop.call_soon_threadsafe(self._loop.stop)
         self._loop = None
+
+    # ---------------------------------------------------- 并发上限热调整
+    def apply_concurrency(self, n: int | None = None) -> int:
+        """把下载并发上限改成 n，立即生效，不用重启程序。
+
+        以前 self._sem 只在 start() 里建一次，用户在设置页把「同时下载数」
+        从 6 改成 2，保存后一点反应都没有 —— 必须退出重开。这里改成可以随时
+        调整：调大直接补许可，调小由占位协程把多出来的许可收走（正在跑的
+        任务不打断，只是不再开新任务）。
+
+        返回调整后的目标值；事件循环还没起来时返回 0（等 start() 时按配置建）。
+        """
+        if self._loop is None:
+            return 0
+        n = max(1, int(n if n is not None else (config().get("concurrency") or 6)))
+        self._loop.call_soon_threadsafe(self._resize_sem, n)
+        return n
+
+    def _resize_sem(self, n: int) -> None:
+        """在事件循环线程里真正改容量。"""
+        sem = self._sem
+        if sem is None:
+            return
+        delta = n - self._sem_n
+        if delta == 0:
+            return
+        self._sem_n = n
+        if delta > 0:
+            # 先把占位协程手里的许可要回来，不够再补
+            while delta > 0 and self._holders:
+                fut = self._holders.pop()
+                if fut.done() and not fut.cancelled():
+                    sem.release()      # 已经拿到手了，直接还回去
+                else:
+                    fut.cancel()
+                delta -= 1
+            for _ in range(delta):
+                sem.release()
+            return
+        # 调小：派 N 个协程去 acquire 并一直握着，等价于把容量减掉 N。
+        # 许可此刻不够也没关系，它们会排队等正在跑的任务交还。
+        for _ in range(-delta):
+            self._holders.append(asyncio.ensure_future(sem.acquire()))
+        log.info("下载并发已调整为 %d", n)
 
     def submit(self, coro: Any) -> Future:
         """把协程投递到后台循环，返回 concurrent.futures.Future。"""

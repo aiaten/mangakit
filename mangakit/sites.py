@@ -976,10 +976,17 @@ class SiteRegistry:
         self.rules_dir = Path(__file__).parent / "rules"
         self._load_builtin()
         self._load_rules()
+        self._apply_saved_state()
 
     # ---- 加载 ----
     def _load_builtin(self) -> None:
-        from . import adapters  # noqa: F401  （触发注册）
+        # 内置适配器必须由「当前这个注册表实例」主动注册。
+        # 不能让 adapters 模块在导入时反过来调 registry()：那一刻模块级
+        # _registry 还是 None，会递归建出第二个注册表；内层装好适配器后
+        # 被外层覆盖，最终 _registry 指向没有适配器的那一个，mstation /
+        # kuaikan / kzdm 三个站就凭空消失（报「没有可用适配器」）。
+        from . import adapters
+        adapters.register_all(self)
 
     def register_adapter(self, cls: type[SiteAdapter]) -> None:
         self._adapters[cls.site_id] = cls  # type: ignore[attr-defined]
@@ -1031,6 +1038,26 @@ class SiteRegistry:
             payload=data,
         ))
 
+    def _apply_saved_state(self) -> None:
+        """把设置页里保存过的「站点启用/禁用」状态盖到站点上。
+
+        以前这里只有内存态：设置页取消勾选某个站，点保存后当时确实不显示，
+        但 `set_enabled()` 只改了 `Site.enabled`，没写进 config，重启又全
+        恢复成勾选 —— 用户以为自己的设置没生效。
+        配置键是 `sites: {site_id: {"enabled": bool}}`（config.py:222 早就
+        预留了这个结构，只是一直没人写也没人读）。
+        """
+        from .config import config
+        saved = config().get("sites") or {}
+        if not isinstance(saved, dict):
+            return
+        for sid, st in saved.items():
+            site = self.sites.get(sid)
+            if site is None or not isinstance(st, dict):
+                continue
+            if "enabled" in st:
+                site.enabled = bool(st["enabled"])
+
     # ---- 查找 ----
     def for_url(self, url: str) -> tuple[Site, SiteAdapter] | None:
         site = self.site_for_url(url)
@@ -1064,9 +1091,48 @@ class SiteRegistry:
         """
         return [s for s in self.all_sites() if s.enabled and not s.hidden]
 
-    def set_enabled(self, site_id: str, enabled: bool) -> None:
-        if site_id in self.sites:
-            self.sites[site_id].enabled = enabled
+    def set_enabled(self, site_id: str, enabled: bool, *, persist: bool = True) -> None:
+        """启用/禁用一个站点。
+
+        persist=True 时同时写进 config，否则重启就丢（见 _apply_saved_state）。
+        默认持久化：调用方几乎都是用户在设置页手动勾选。
+        """
+        site = self.sites.get(site_id)
+        if site is None:
+            return
+        site.enabled = bool(enabled)
+        if not persist:
+            return
+        try:
+            from .config import config
+            config().set_site(site_id, {"enabled": bool(enabled)})
+        except Exception as e:  # 配置写不进去不该连界面操作一起炸掉
+            log.warning("保存站点 %s 启用状态失败: %s", site_id, e)
+
+    def set_enabled_many(self, states: dict[str, bool]) -> None:
+        """批量设置启用状态并只写一次配置。
+
+        设置页保存时会把整张站点表都过一遍，逐个调 set_enabled() 会触发
+        26 次 config.save()（每次都是整份 JSON 落盘）。这里先在内存里改完，
+        最后一次写盘。
+        """
+        changed: dict[str, Any] = {}
+        for sid, enabled in states.items():
+            site = self.sites.get(sid)
+            if site is None:
+                continue
+            site.enabled = bool(enabled)
+            changed[sid] = {"enabled": bool(enabled)}
+        if not changed:
+            return
+        try:
+            from .config import config
+            c = config()
+            for sid, vals in changed.items():
+                c.set_site(sid, vals, save=False)
+            c.save()
+        except Exception as e:
+            log.warning("保存站点启用状态失败: %s", e)
 
     def supported_hosts(self) -> list[str]:
         return sorted({d for s in self.sites.values() for d in s.domains})

@@ -49,10 +49,15 @@ def main() -> int:
 
     A = "https://songzimanhua.com/book/15293/"
     B = "https://example.com/book/999/"
-    # A：有历史基准（上次 1060 话），且最后一次检查时间已有
+    # A：有历史基准（上次检查时最大话号 1060 话，且最后一次检查时间已有）。
+    # 注意「上次章节数」这一列读的是 base_no（上一轮的旧话号），不是 last_no。
+    # 所以要先扫两轮，才能得到一个"有上一次可比"的真实状态：
+    #   第 1 轮 last_no=-1 → 1060：base_no 冻住 -1
+    #   第 2 轮 last_no=1060 → 1060：base_no 冻住 1060  ← 这才是要测的
     test_store.add_favorite({"title": "海贼王", "url": A, "site": "songzimanhua",
                              "author": "尾田"})
-    test_store.mark_favorite_checked("songzimanhua", A, 0, 1060, 1150)
+    test_store.mark_favorite_checked("songzimanhua", A, 0, 1060, 1060)
+    test_store.mark_favorite_checked("songzimanhua", A, 0, 1060, 1060)
     # B：从未检查过
     test_store.add_favorite({"title": "新书", "url": B, "site": "songzimanhua"})
 
@@ -96,63 +101,64 @@ def main() -> int:
     check("A 上次检查", cell(iA, 6) != "从未", True)
 
     print("\n== 4. 跑一轮检查后，该列仍是旧值（可对比）==")
-    # 模拟本轮结果：倒序站，列表末尾是第1话，话号最大是第1162话
+    # 模拟本轮结果：倒序站，列表末尾是第1话，最大话号 1068（比上次 1060 多 8 话）
     up = FavoriteUpdate("songzimanhua", A, "海贼王",
-                        latest_index=1067, latest_no=1162,
-                        latest_title="第1162话", total=1068,
-                        prev_total=1060, prev_no=1150,
-                        new_count=8, status="new", by="count",
-                        message="按章节数对比；章节数 1060 → 1068")
+                        latest_index=1067, latest_no=1068,
+                        latest_title="第1068话", total=1068,
+                        prev_total=1060, prev_no=1060,
+                        new_count=8, status="new", by="no",
+                        message="按最大话号对比；最新话号 1060 → 1068；章节数 1060 → 1068")
     # _rid 只有点过「检查更新」才存在；这里手工设成一致，模拟"正在检查中"
     page._rid = 7
     page.on_update_partial(7, up)
-    check("检查后 最新章节", cell(iA, 3), "第1162话")
+    check("检查后 最新章节", cell(iA, 3), "第1068话")
     check("检查后 状态", cell(iA, 5), "有 8 话更新")
     check("检查后 上次章节数仍是旧值", cell(iA, 4), "1060 话")
     prev_item = page.table.item(iA, 4)
     print(f"   上次章节数 tooltip = {prev_item.toolTip()!r}")
-    check("tooltip 含上次值", "上次检查时源站共 1060 话" in prev_item.toolTip(), True)
-    check("tooltip 含本次值", "本次 1068 话" in prev_item.toolTip(), True)
+    check("tooltip 含上次值", "上次检查时最大话号：1060 话" in prev_item.toolTip(), True)
+    check("tooltip 含本次值", "本次最大话号：1068 话" in prev_item.toolTip(), True)
     check("tooltip 说明多了几话", "多 8 话" in prev_item.toolTip(), True)
     # Qt 会把 "#c60" 归一化成 "#cc6600"
     check("上次章节数标橙", prev_item.foreground().color().name(), "#cc6600")
     st_item = page.table.item(iA, 5)
     print(f"   状态 tooltip = {st_item.toolTip()!r}")
+    check("状态 tooltip 含本次话号", "本次最大话号：1068 话" in st_item.toolTip(), True)
     check("状态 tooltip 含本次章节数", "本次章节数：1068" in st_item.toolTip(), True)
 
     print("\n== 5. 倒序站：最新章节不显示成第 1 话 ==")
     # latest_title 为空时也不能退回按位置算成「第 1068 话」
     up2 = FavoriteUpdate("songzimanhua", A, "海贼王", latest_index=1067,
-                         latest_no=1162, latest_title="", total=1068,
-                         prev_total=1068, prev_no=1162, new_count=0, status="ok",
-                         by="count", message="按章节数对比；章节数 1068 → 1068")
+                         latest_no=1068, latest_title="", total=1068,
+                         prev_total=1068, prev_no=1068, new_count=0, status="ok",
+                         by="no", message="按最大话号对比；最新话号 1068 → 1068")
     page.on_update_partial(7, up2)
-    check("无标题时回退到话号", cell(iA, 3), "第 1162 话")
+    check("无标题时回退到话号", cell(iA, 3), "第 1068 话")
     check("没变时上次章节数", cell(iA, 4), "1068 话")
     it = page.table.item(iA, 4)
     check("没变时不标橙", it.foreground().color().name(), "#000000")
     check("没变 tooltip", "（没变）" in it.toolTip(), True)
 
-    print("\n== 6. 章节数变少（站方删话）==")
+    print("\n== 6. 站方删话 / 话号回退 ==")
     up3 = FavoriteUpdate("songzimanhua", A, "海贼王", latest_index=100,
                          latest_no=1000, latest_title="第1000话", total=1000,
-                         prev_total=1068, prev_no=1162, new_count=0, status="ok",
-                         by="count", message="按章节数对比；章节数 1068 → 1000")
+                         prev_total=1068, prev_no=1068, new_count=0, status="ok",
+                         by="no", message="按最大话号对比；最新话号 1068 → 1000")
     page.on_update_partial(7, up3)
     check("变少不报负", cell(iA, 5), "无更新")
     it = page.table.item(iA, 4)
     check("变少 tooltip", "少 68 话" in it.toolTip(), True)
 
     print("\n== 7. 检查完 reload() 后仍看得到「上次 → 本次」（关键）==")
-    # 这是这一列的意义所在：跑完一轮检查后，库里 last_total 已经被刷成本次值，
-    # 如果那一列直接读 last_total 就会等于本次、永远看不出对比。
-    # 所以写库时要把旧值挪进 base_total。
-    test_store.mark_favorite_checked("songzimanhua", A, 1067, 1068, 1162)
+    # 这是这一列的意义所在：跑完一轮检查后，库里 last_no 已经被刷成本次值，
+    # 如果那一列直接读 last_no 就会等于本次、永远看不出对比。
+    # 所以写库时要把旧值挪进 base_no。
+    test_store.mark_favorite_checked("songzimanhua", A, 1067, 1068, 1068)
     row = test_store.one("SELECT * FROM favorites WHERE site=? AND url=?", ("songzimanhua", A))
-    print(f"   库：base_total={row['base_total']} last_total={row['last_total']} "
-          f"last_no={row['last_no']}")
-    check("base_total 冻住旧值", row["base_total"], 1060)
-    check("last_total 是本次值", row["last_total"], 1068)
+    print(f"   库：base_no={row['base_no']} last_no={row['last_no']} "
+          f"base_total={row['base_total']} last_total={row['last_total']}")
+    check("base_no 冻住旧话号 1060", row["base_no"], 1060)
+    check("last_no 是本次值 1068", row["last_no"], 1068)
 
     page.reload()
     rows2 = {}
@@ -162,25 +168,25 @@ def main() -> int:
     check("reload 后 上次章节数", cell(iA2, 4), "1060 话")
     t = page.table.item(iA2, 4).toolTip()
     print(f"   reload 后 tooltip = {t!r}")
-    check("reload 后 tooltip 有本次值", "本次 1068 话" in t, True)
+    check("reload 后 tooltip 有本次值", "本次最大话号：1068 话" in t, True)
     check("reload 后 tooltip 有多 8 话", "多 8 话" in t, True)
     check("reload 后标橙", page.table.item(iA2, 4).foreground().color().name(),
           "#cc6600")
-    # 章节数判更新已由离线套件覆盖；这里只确认界面显示
+    # 更新判定已由离线套件 t_updates2.py 覆盖；这里只确认界面显示
 
-    print("\n== 8. 连查两轮：base_total 跟着前进，不是停在第一次 ==")
-    test_store.mark_favorite_checked("songzimanhua", A, 1080, 1085, 1175)
+    print("\n== 8. 连查两轮：base_no 跟着前进，不是停在第一次 ==")
+    test_store.mark_favorite_checked("songzimanhua", A, 1080, 1085, 1085)
     row = test_store.one("SELECT * FROM favorites WHERE site=? AND url=?", ("songzimanhua", A))
-    print(f"   第二轮后：base_total={row['base_total']} last_total={row['last_total']}")
-    check("base_total 前进到上一轮", row["base_total"], 1068)
-    check("last_total 是最新", row["last_total"], 1085)
+    print(f"   第二轮后：base_no={row['base_no']} last_no={row['last_no']}")
+    check("base_no 前进到上一轮", row["base_no"], 1068)
+    check("last_no 是最新", row["last_no"], 1085)
     page.reload()
     check("第二轮显示", cell(rows2["海贼王"], 4), "1068 话")
 
     print("\n== 9. 重设基线（从现在开始）不该留旧对比 ==")
-    test_store.set_favorite_baseline("songzimanhua", A, 1080, 1085, 1175)
+    test_store.set_favorite_baseline("songzimanhua", A, 1080, 1085, 1085)
     row = test_store.one("SELECT * FROM favorites WHERE site=? AND url=?", ("songzimanhua", A))
-    check("baseline 时 base_total=当前值", row["base_total"], 1085)
+    check("baseline 时 base_no=当前值", row["base_no"], 1085)
     page.reload()
     check("baseline 后无对比（显示当前值）", cell(rows2["海贼王"], 4), "1085 话")
 

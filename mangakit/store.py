@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS favorites (
     last_total INTEGER DEFAULT -1,
     last_no    INTEGER DEFAULT -1,
     base_total INTEGER DEFAULT -1,
+    base_no    INTEGER DEFAULT -1,
     PRIMARY KEY (site, url)
 );
 
@@ -105,11 +106,18 @@ class Store:
         # 老库里 last_index 存的是列表位置、语义不同，绝不能拿来当话号比。
         if "last_no" not in have:
             c.execute("ALTER TABLE favorites ADD COLUMN last_no INTEGER DEFAULT -1")
-        # base_total：**上一次**检查时的章节数，也就是界面上「上次章节数」那一列。
-        # 为什么不能直接用 last_total：每查一次 last_total 就被刷成当前值，
-        # 那一列查完立刻等于本次，等于白加。所以单独留一列冻住"上一次"。
+        # base_total：**上一次**检查时的章节数。为什么不能直接用 last_total：
+        # 每查一次 last_total 就被刷成当前值，那一列查完立刻等于本次，等于白加。
+        # 所以单独留一列冻住"上一次"。
         if "base_total" not in have:
             c.execute("ALTER TABLE favorites ADD COLUMN base_total INTEGER DEFAULT -1")
+        # base_no：**上一次**检查时的最大话号，界面上「上次章节数」这一列现在
+        # 读的就是它（v0.4.0 起口径从「章节总数」改成「最大话号」）。
+        # 为什么换口径：章节总数在缺话/跳话的站上会骗人 —— 比如源站从第 50 话
+        # 直接跳到第 60 话，总数只多 1，但读者实际多出 10 话可看。
+        # 补成 -1 表示「还没有这个基准」，下一次检查会自然填上，不影响老数据。
+        if "base_no" not in have:
+            c.execute("ALTER TABLE favorites ADD COLUMN base_no INTEGER DEFAULT -1")
 
     # ---- 连接管理 ----
     def _connect(self) -> sqlite3.Connection:
@@ -315,13 +323,16 @@ class Store:
         就只更新时间——例如检查失败、或该站根本拿不到章节，这时绝不能把
         基线清掉，否则下次会把「没查成」当成「没更新」。
 
-        写入 latest_total 时，会先把**原来的** last_total 挪到 base_total。
-        界面上的「上次章节数」读的就是 base_total：只有把它冻住，用户才能在
-        检查完之后仍然看到「上次是多少 → 本次是多少」。直接用 last_total 的话，
+        写入 latest_no 时，会先把**原来的** last_no 挪到 base_no。
+        界面上的「上次章节数」读的就是 base_no：只有把它冻住，用户才能在
+        检查完之后仍然看到「上次是多少 → 本次是多少」。直接用 last_no 的话，
         它每查一次就被刷成当前值，那一列查完立刻等于本次，等于白加。
 
-        force_base=True（用户点「从现在开始」重设基线）时，base_total 跟着
-        一起设成当前值：那次没有"上一次"，把旧值留在那一列反而会误导。
+        base_total 也照样维护（老版本的口径是章节总数），留给更老的界面/
+        工具读，两个基准互不影响。
+
+        force_base=True（用户点「从现在开始」重设基线）时，base_no / base_total
+        跟着一起设成当前值：那次没有"上一次"，把旧值留在那一列反而会误导。
         """
         sets = ["last_check=?"]
         vals: list[Any] = [last_check]
@@ -336,6 +347,17 @@ class Store:
                 self.execute(
                     "UPDATE favorites SET base_total=? WHERE site=? AND url=?",
                     (self._effective_total(site, url), site, url))
+        if latest_no is not None:
+            if force_base:
+                sets.append("base_no=?")
+                vals.append(int(latest_no))
+            else:
+                # 同上：把「写之前的 last_no」冻进 base_no。
+                # 老库 last_no 还是 -1（从没记过话号）时写进去的是 -1，
+                # 界面就显示「—」，下一次检查开始才有话号基准。
+                self.execute(
+                    "UPDATE favorites SET base_no=? WHERE site=? AND url=?",
+                    (self._effective_no(site, url), site, url))
         for col, val in (("last_index", latest_index),
                          ("last_total", latest_total),
                          ("last_no", latest_no)):
@@ -344,6 +366,23 @@ class Store:
                 vals.append(int(val))
         vals.extend([site, url])
         self.execute(f"UPDATE favorites SET {', '.join(sets)} WHERE site=? AND url=?", vals)
+
+    def _effective_no(self, site: str, url: str) -> int:
+        """库里记着的「当前最大话号」。从没记过话号时返回 -1。
+
+        注意这里**不能**像 _effective_total 那样拿 last_index 顶替：
+        last_index 是列表位置序号，和话号是两回事，拿来当话号比会凭空
+        多报好多话（倒序站尤其严重）。
+        """
+        row = self.one("SELECT last_no FROM favorites WHERE site=? AND url=?",
+                       (site, url))
+        if row is None:
+            return -1
+        try:
+            n = int(row["last_no"])
+            return n if n >= 0 else -1
+        except (TypeError, ValueError, IndexError, KeyError):
+            return -1
 
     def _effective_total(self, site: str, url: str) -> int:
         """库里记着的「当前章节数」。老库没有 last_total 时用 last_index+1 还原。

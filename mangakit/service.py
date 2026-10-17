@@ -295,21 +295,33 @@ class ComicService:
             return FavoriteUpdate(site_id, url, title, new_count=0, status="first",
                                   message="首次检查，已记录当前进度", **common)
 
-        # 两个信号各算一遍，取大者：
-        #  - 章节数差（主）：与排列顺序无关，倒序站也稳。
-        #  - 话号差（补）：有的站会删旧话，总数不变但话号在涨。
-        # 取 max 是为了都不漏；任一侧算不出来就只用另一侧。
+        # 更新判定以「最大话号」为主：话号涨了多少，就是多了几话。
+        # 这是唯一在「缺话/跳话」的情况下也说得准的口径 —— 章节总数只多 1，
+        # 但话号从 50 跳到 60，读者实际多出 10 话可看。
+        #
+        # 但话号不能是唯一信号，有三种情况它会漏：
+        #   a) 新加的一话标题里没有话号（只写「番外」「后记」）→ 话号不变，总数涨了；
+        #   b) 整个站的标题都抠不出话号（少数站直接把章节名当标题）→ 两侧都 -1；
+        #   c) 老库还没记过话号（prev_no<0）→ 没有话号基准。
+        # 所以章节数差是必须保留的**并集**，不是"退路"：
+        # 话号没涨而总数涨了，同样要报更新，否则用户会漏掉「番外」这种更新。
         by = ""
         new_count = 0
-        if prev_total >= 0:
-            new_count = max(0, total - prev_total)
-            by = "count"
+        count_delta = max(0, total - prev_total) if prev_total >= 0 else 0
         if prev_no >= 0 and latest_no >= 0 and latest_no > prev_no:
-            grown = sum(1 for c in chs if c.no > prev_no)
-            if grown > new_count:
-                new_count, by = grown, "no"
+            # 用**话号差**而不是"数一下有多少条超过旧话号"：
+            # 源站第 50 话直接跳到第 60 话时，实际只多 9 条，但用户视角是
+            # "从第 50 话更到第 60 话，多了 10 话的进度"。话号才是进度单位，
+            # 缺的那一话不是"没更新"，而是源站自己就没有。
+            new_count, by = latest_no - prev_no, "no"
+            # 总数差更大时（同期补了几话认不出话号的，如「番外」）取大者不漏
+            if count_delta > new_count:
+                new_count, by = count_delta, "count"
+        elif count_delta > 0:
+            # 话号没涨（或压根没有话号基准），但章节数涨了 → 按章节数报
+            new_count, by = count_delta, "count"
         if not by:
-            by = "count"
+            by = "no" if (prev_no >= 0 and latest_no >= 0) else "count"
 
         message = _delta_note(prev_total, total, prev_no, latest_no, by)
         if new_count <= 0:
@@ -355,11 +367,11 @@ def _prev_baseline(row) -> tuple[int, int]:
 def _delta_note(prev_total: int, total: int, prev_no: int, latest_no: int,
                 by: str) -> str:
     """给状态列做 tooltip：这次是拿什么比出来的、两边各是多少。"""
-    basis = "章节数" if by == "count" else "话号"
+    basis = "最大话号" if by == "no" else "章节数"
     parts = [f"按{basis}对比"]
-    if prev_total >= 0:
-        parts.append(f"章节数 {prev_total} → {total}")
     if prev_no >= 0 and latest_no >= 0:
         parts.append(f"最新话号 {prev_no} → {latest_no}")
+    if prev_total >= 0:
+        parts.append(f"章节数 {prev_total} → {total}")
     return "；".join(parts)
 

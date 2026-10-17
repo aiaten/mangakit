@@ -5,14 +5,16 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import os
 import re
+import tempfile
 import zipfile
 from pathlib import Path
 
 from .config import config
-from .images import HAVE_PIL
+from .images import HAVE_PIL, sniff_ext
 from .logsetup import get
 
 log = get("export")
@@ -33,11 +35,23 @@ def page_files(folder: Path) -> list[Path]:
     return sorted(files, key=key)
 
 
+def sibling(folder: Path, ext: str) -> Path:
+    """章节目录同级的输出路径：`第12.5话` → `第12.5话.cbz`。
+
+    ★ 不能用 `folder.with_suffix(ext)`：with_suffix 会**替换**最后一段后缀，
+    而章节名里带点很常见（`第12.5话`、`Ch.12.5`、`第3卷.下`）。
+    `Path("第12.5话").with_suffix(".cbz")` 得到的是 `第12.cbz` ——
+    于是「第12.5话」和「第12.6话」会打包到**同一个文件**上互相覆盖，
+    用户看到的是「下载了两话，只剩一话」。改成追加而不是替换。
+    """
+    return folder.parent / f"{folder.name}{ext}"
+
+
 def _zip_like(folder: Path, ext: str, compress: int) -> Path:
     files = page_files(folder)
     if not files:
         raise ValueError(f"{folder.name} 里没有图片")
-    target = folder.with_suffix(ext)
+    target = sibling(folder, ext)
     with zipfile.ZipFile(target, "w", compress) as z:
         for i, f in enumerate(files, 1):
             # CBZ 内部按顺序命名，避免本地文件改名后顺序错乱
@@ -67,7 +81,7 @@ def to_pdf(folder: Path, out: Path | None = None) -> Path:
     files = page_files(folder)
     if not files:
         raise ValueError(f"{folder.name} 里没有图片")
-    out = out or folder.with_suffix(".pdf")
+    out = out or sibling(folder, ".pdf")
     try:
         import img2pdf
 
@@ -101,25 +115,59 @@ def to_pdf(folder: Path, out: Path | None = None) -> Path:
     return out
 
 
+MEDIA_BY_EXT = {
+    ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+    ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp",
+    ".avif": "image/avif", ".tif": "image/tiff", ".tiff": "image/tiff",
+}
+
+_XHTML_HEAD = ('<?xml version="1.0" encoding="utf-8"?>'
+               '<html xmlns="http://www.w3.org/1999/xhtml"><head>'
+               '<meta charset="utf-8"/><title>{title}</title>'
+               '<link rel="stylesheet" type="text/css" href="../style.css"/></head>')
+_CSS = ("@page{margin:0}body{margin:0;padding:0}"
+        ".page{margin:0;padding:0;text-align:center;page-break-after:always}"
+        "img{max-width:100%;max-height:100%;height:auto}")
+
+
+def _epub_id(folder: Path) -> str:
+    """稳定的书号：同一目录每次导出得到同一个 id。
+
+    不能用 `hash(str(folder))`：Python 的字符串 hash 每个进程都加了随机盐
+    （PYTHONHASHSEED），同一个章节每次导出会得到不同的 dc:identifier，
+    有些阅读器/书架据此判定为「新书」而重复收录。
+    """
+    import hashlib
+    return hashlib.sha1(str(folder).encode("utf-8")).hexdigest()[:16]
+
+
 def to_epub(folder: Path, title: str | None = None) -> Path:
     """单章节 EPUB（多章合并用 merge_epub）。"""
     files = page_files(folder)
     if not files:
         raise ValueError(f"{folder.name} 里没有图片")
     title = title or folder.name
-    out = folder.with_suffix(".epub")
-    items = "\n".join(
-        f'<item id="p{i}" href="images/{i:05d}.jpg" media-type="image/jpeg"/>'
-        for i in range(1, len(files) + 1)
+    out = sibling(folder, ".epub")
+
+    # 每个页面的真实扩展名决定 zip 内文件名与 media-type。以前固定写 .jpg：
+    # PNG 的字节被命名成 .jpg 且声明 image/jpeg，严格的阅读器（Calibre 校验、
+    # Apple Books）会报「文件损坏」或整章不显示。
+    exts = [f.suffix.lower() for f in files]
+    exts = [e if e in MEDIA_BY_EXT else ".jpg" for e in exts]
+
+    img_items = "".join(
+        f'<item id="i{n}" href="images/{n:05d}{e}" media-type="{MEDIA_BY_EXT[e]}"/>'
+        for n, e in enumerate(exts, 1)
     )
-    manifest = "".join(
-        f'<item id="p{i}" href="pages/{i:05d}.xhtml" media-type="application/xhtml+xml"/>'
-        for i in range(1, len(files) + 1)
+    page_items = "".join(
+        f'<item id="p{n}" href="pages/{n:05d}.xhtml" media-type="application/xhtml+xml"/>'
+        for n in range(1, len(files) + 1)
     )
-    spine = "".join(f'<itemref idref="p{i}"/>' for i in range(1, len(files) + 1))
-    body = "".join(
-        f'<div class="page"><img src="images/{i:05d}.jpg" alt="第{i}页"/></div>'
-        for i in range(1, len(files) + 1)
+    spine = "".join(f'<itemref idref="p{n}"/>' for n in range(1, len(files) + 1))
+    navpoints = "".join(
+        f'<navPoint id="n{n}" playOrder="{n}"><navLabel><text>第{n}页</text></navLabel>'
+        f'<content src="pages/{n:05d}.xhtml"/></navPoint>'
+        for n in range(1, len(files) + 1)
     )
     container = ('<?xml version="1.0"?><container version="1.0" '
                  'xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
@@ -128,43 +176,43 @@ def to_epub(folder: Path, title: str | None = None) -> Path:
     opf = f'''<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">
 <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-<dc:identifier id="uid">urn:mangakit:{abs(hash(str(folder)))}</dc:identifier>
+<dc:identifier id="uid">urn:mangakit:{_epub_id(folder)}</dc:identifier>
 <dc:title>{_esc(title)}</dc:title><dc:language>zh-CN</dc:language>
 <meta property="rendition:layout">pre-paginated</meta>
+<meta property="rendition:orientation">portrait</meta>
+<meta property="rendition:spread">none</meta>
 </metadata>
-<manifest>{manifest}<item id="css" href="style.css" media-type="text/css"/></manifest>
+<manifest>{img_items}{page_items}<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/><item id="css" href="style.css" media-type="text/css"/></manifest>
 <spine toc="ncx">{spine}</spine></package>'''
     ncx = f'''<?xml version="1.0" encoding="utf-8"?>
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
-<head><meta name="dtb:uid" content="uid"/></head>
+<head><meta name="dtb:uid" content="urn:mangakit:{_epub_id(folder)}"/></head>
 <docTitle><text>{_esc(title)}</text></docTitle>
-<navMap>{''.join(f'<navPoint id="n{i}" playOrder="{i}"><navLabel><text>第{i}页</text></navLabel><content src="pages/{i:05d}.xhtml"/></navPoint>' for i in range(1, len(files) + 1))}</navMap>
+<navMap>{navpoints}</navMap>
 </ncx>'''
-    css = "body{margin:0} .page{margin:0;padding:0;text-align:center} img{max-width:100%;height:auto}"
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("mimetype", "application/epub+zip", zipfile.ZIP_STORED)
         z.writestr("META-INF/container.xml", container)
         z.writestr("OEBPS/content.opf", opf)
         z.writestr("OEBPS/toc.ncx", ncx)
-        z.writestr("OEBPS/style.css", css)
-        for i, f in enumerate(files, 1):
-            z.writestr(f"OEBPS/images/{i:05d}.jpg", f.read_bytes())
+        z.writestr("OEBPS/style.css", _CSS)
+        for n, (f, e) in enumerate(zip(files, exts), 1):
+            z.writestr(f"OEBPS/images/{n:05d}{e}", f.read_bytes())
+            # ★ 一页一个 xhtml，只放本页那张图。
+            # 旧代码把「全部页面」的 img 拼进了第 1 页的 body（body 变量被复用到
+            # 每一页），于是第 1 页显示全书所有图片、第 2..N 页又各显示一张 ——
+            # 阅读时表现为「第 1 页后面所有图重复了一遍」。
             z.writestr(
-                f"OEBPS/pages/{i:05d}.xhtml",
-                f'<?xml version="1.0" encoding="utf-8"?>'
-                f'<html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" '
-                f'type="text/css" href="../style.css"/></head><body>{body}</body></html>'
-                if i == 1 else
-                f'<?xml version="1.0" encoding="utf-8"?>'
-                f'<html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" '
-                f'type="text/css" href="../style.css"/></head><body>'
-                f'<div class="page"><img src="../images/{i:05d}.jpg" alt="第{i}页"/></div></body></html>',
+                f"OEBPS/pages/{n:05d}.xhtml",
+                _XHTML_HEAD.format(title=_esc(f"第{n}页"))
+                + f'<body><div class="page"><img src="../images/{n:05d}{e}" alt="第{n}页"/></div></body></html>',
             )
     return out
 
 
 def _esc(s: str) -> str:
-    return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+    return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            .replace('"', "&quot;").replace("'", "&apos;"))
 
 
 def join_long_strip(folder: Path, out: Path | None = None) -> Path:
@@ -194,50 +242,98 @@ def join_long_strip(folder: Path, out: Path | None = None) -> Path:
     return out
 
 
-def merge_epub(epubs: list[Path], out: Path) -> Path:
-    """把多个单章 EPUB 合成一本。"""
-    if len(epubs) == 1:
-        epubs[0].replace(out)
-        return out
-    import shutil
-    import tempfile
+def merge_epub(epubs: list[Path], out: Path, title: str = "合集") -> Path:
+    """把多个单章 EPUB 合成一本（按传入顺序排列章节）。
 
-    work = Path(tempfile.mkdtemp(prefix="mangakit_epub_"))
-    for i, e in enumerate(epubs):
-        with zipfile.ZipFile(e) as z:
-            z.extractall(work / f"c{i}")
-    images: list[str] = []
-    spine_items: list[str] = []
-    for i, _ in enumerate(epubs):
-        d = work / f"c{i}" / "OEBPS"
-        if d.is_dir():
-            for p in sorted((d / "images").glob("*.jpg")):
-                images.append(p.read_bytes())
-            for p in sorted((d / "pages").glob("*.xhtml")):
-                spine_items.append(f'<item id="s{i}_{p.stem}" href="pages/{i}_{p.stem}.xhtml" media-type="application/xhtml+xml"/>')
-    total = len(images)
-    spine_items = [
-        f'<item id="s{i}_{i}" href="pages/{i}_{i}.xhtml" media-type="application/xhtml+xml"/>'
-        for i in range(total)
-    ]
-    manifest = "".join(spine_items) + '<item id="css" href="style.css" media-type="text/css"/>'
-    opf = f'''<?xml version="1.0" encoding="utf-8"?>
+    修掉的几个问题：
+    - 原来只 glob `*.jpg`，PNG/WebP 页被**静默丢掉**（合并出来的书缺页）；
+    - 原来用系统临时目录解包，本机 temp 不可写时直接 PermissionError；
+      改成在 out 旁边建临时目录，导出完删掉；
+    - 只有一个输入时原来用 `replace()` —— 那会把用户原来那本**移走**，
+      等于合并一次就毁掉源文件；改成复制。
+    """
+    if not epubs:
+        raise ValueError("没有可合并的 EPUB")
+    import shutil
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if len(epubs) == 1:
+        shutil.copyfile(epubs[0], out)
+        return out
+
+    work = Path(tempfile.mkdtemp(prefix=".mk_epub_", dir=str(out.parent)))
+    try:
+        # 按「章 → 页」收集，保持传入顺序，不依赖 zip 内名字排序
+        pages: list[tuple[bytes, str]] = []   # (图片字节, 扩展名)
+        for i, e in enumerate(epubs):
+            d = work / f"c{i}"
+            with zipfile.ZipFile(e) as z:
+                z.extractall(d)
+            src = d / "OEBPS" / "images"
+            if not src.is_dir():
+                continue
+            for p in sorted(src.iterdir(), key=lambda q: (len(q.stem), q.stem)):
+                if not p.is_file():
+                    continue
+                data = p.read_bytes()
+                ext = p.suffix.lower()
+                if ext not in MEDIA_BY_EXT:
+                    ext = sniff_ext(data) or ".jpg"
+                pages.append((data, ext))
+        if not pages:
+            raise ValueError("这些 EPUB 里没有图片")
+
+        img_items = "".join(
+            f'<item id="i{n}" href="images/{n:05d}{e}" media-type="{MEDIA_BY_EXT[e]}"/>'
+            for n, (_, e) in enumerate(pages, 1)
+        )
+        page_items = "".join(
+            f'<item id="p{n}" href="pages/{n:05d}.xhtml" media-type="application/xhtml+xml"/>'
+            for n in range(1, len(pages) + 1)
+        )
+        spine = "".join(f'<itemref idref="p{n}"/>' for n in range(1, len(pages) + 1))
+        navpoints = "".join(
+            f'<navPoint id="n{n}" playOrder="{n}"><navLabel><text>第{n}页</text></navLabel>'
+            f'<content src="pages/{n:05d}.xhtml"/></navPoint>'
+            for n in range(1, len(pages) + 1)
+        )
+        uid = hashlib.sha1(str(out).encode("utf-8")).hexdigest()[:16]
+        opf = f'''<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">
-<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="uid">urn:mangakit:merged</dc:identifier>
-<dc:title>合集</dc:title><dc:language>zh-CN</dc:language></metadata>
-<manifest>{manifest}</manifest><spine>{''.join(f'<itemref idref="s{i}_{i}"/>' for i in range(total))}</spine></package>'''
-    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("mimetype", "application/epub+zip", zipfile.ZIP_STORED)
-        z.writestr("META-INF/container.xml",
-                   '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
-                   '<rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>')
-        z.writestr("OEBPS/content.opf", opf)
-        z.writestr("OEBPS/style.css", "body{margin:0} img{max-width:100%}")
-        for i, data in enumerate(images):
-            z.writestr(f"OEBPS/images/{i:05d}.jpg", data)
-            z.writestr(f"OEBPS/pages/{i}_{i}.xhtml",
-                       f'<?xml version="1.0" encoding="utf-8"?><html xmlns="http://www.w3.org/1999/xhtml">'
-                       f'<head><link rel="stylesheet" type="text/css" href="../style.css"/></head>'
-                       f'<body><div class="page"><img src="../images/{i:05d}.jpg"/></div></body></html>')
-    shutil.rmtree(work, ignore_errors=True)
+<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+<dc:identifier id="uid">urn:mangakit:{uid}</dc:identifier>
+<dc:title>{_esc(title)}</dc:title><dc:language>zh-CN</dc:language>
+<meta property="rendition:layout">pre-paginated</meta>
+<meta property="rendition:orientation">portrait</meta>
+<meta property="rendition:spread">none</meta>
+</metadata>
+<manifest>{img_items}{page_items}<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/><item id="css" href="style.css" media-type="text/css"/></manifest>
+<spine toc="ncx">{spine}</spine></package>'''
+        ncx = f'''<?xml version="1.0" encoding="utf-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+<head><meta name="dtb:uid" content="urn:mangakit:{uid}"/></head>
+<docTitle><text>{_esc(title)}</text></docTitle>
+<navMap>{navpoints}</navMap>
+</ncx>'''
+        tmp_out = out.with_name(out.name + ".tmp")
+        with zipfile.ZipFile(tmp_out, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("mimetype", "application/epub+zip", zipfile.ZIP_STORED)
+            z.writestr("META-INF/container.xml",
+                       '<?xml version="1.0"?><container version="1.0" '
+                       'xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
+                       '<rootfiles><rootfile full-path="OEBPS/content.opf" '
+                       'media-type="application/oebps-package+xml"/></rootfiles></container>')
+            z.writestr("OEBPS/content.opf", opf)
+            z.writestr("OEBPS/toc.ncx", ncx)
+            z.writestr("OEBPS/style.css", _CSS)
+            for n, (data, e) in enumerate(pages, 1):
+                z.writestr(f"OEBPS/images/{n:05d}{e}", data)
+                z.writestr(
+                    f"OEBPS/pages/{n:05d}.xhtml",
+                    _XHTML_HEAD.format(title=_esc(f"第{n}页"))
+                    + f'<body><div class="page"><img src="../images/{n:05d}{e}" alt="第{n}页"/></div></body></html>',
+                )
+        os.replace(tmp_out, out)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
     return out

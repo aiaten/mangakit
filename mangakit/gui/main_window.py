@@ -12,7 +12,9 @@ from typing import Any
 from PySide6.QtCore import (
     Qt, QSize, QUrl, Signal, QTimer, QObject, QRunnable, QThreadPool,
 )
-from PySide6.QtGui import QAction, QIcon, QKeySequence, QPixmap, QColor, QBrush
+from PySide6.QtGui import (
+    QAction, QIcon, QKeySequence, QPixmap, QColor, QBrush, QTextCursor,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog,
     QDialogButtonBox, QFileDialog, QFormLayout, QFrame, QGridLayout,
@@ -741,6 +743,8 @@ class MangaPage(QWidget):
 class TasksPage(QWidget):
     """下载任务列表 + 日志。"""
 
+    MAX_LOG_LINES = 2000
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.mgr = manager()
@@ -758,7 +762,7 @@ class TasksPage(QWidget):
         bar = QHBoxLayout()
         for text, fn in (("全部继续", lambda: self._bulk("resume")),
                          ("全部暂停", lambda: self._bulk("pause")),
-                         ("清理已完成", self.mgr.clear_finished),
+                         ("清理已完成", self._clear_finished),
                          ("打开下载目录", lambda: os.startfile(config().download_dir))):
             b = QPushButton(text)
             b.clicked.connect(fn)
@@ -803,9 +807,15 @@ class TasksPage(QWidget):
     def _append(self, t: Task) -> int:
         r = self.table.rowCount()
         self.table.insertRow(r)
-        self.table.setItem(r, 0, QTableWidgetItem(t.comic))
+        it0 = QTableWidgetItem(t.comic)
+        # 把 tid 挂在第一列上：按钮要操作的是「这一行对应的任务」，
+        # 不能靠漫画名反查（同一部漫画会有很多章节行，按名字只能命中第一条，
+        # 于是「暂停第 3 话」实际暂停了第 1 话）。
+        it0.setData(Qt.UserRole, t.tid)
+        self.table.setItem(r, 0, it0)
         self.table.setItem(r, 1, QTableWidgetItem(t.chapter))
         self.table.setItem(r, 3, QTableWidgetItem(STATUS_TEXT.get(t.status, t.status)))
+        self.table.setItem(r, 4, QTableWidgetItem(""))
         self.table.setItem(r, 5, QTableWidgetItem(t.error or ""))
         self._rows[t.tid] = r
         self._update(t)
@@ -815,14 +825,23 @@ class TasksPage(QWidget):
         r = self._rows.get(t.tid)
         if r is None:
             r = self._append(t)
-        bar = QProgressBar()
-        bar.setRange(0, 100)
+        # 进度条复用：_update 每个进度回调都会跑（下载时每秒好几次），
+        # 每次新建 QProgressBar 再 setCellWidget 会持续创建/销毁子控件，
+        # 任务一多就明显卡。已存在就只改数值。
+        bar = self.table.cellWidget(r, 2)
+        if not isinstance(bar, QProgressBar):
+            bar = QProgressBar()
+            bar.setRange(0, 100)
+            bar.setTextVisible(True)
+            bar.setMinimumWidth(140)
+            self.table.setCellWidget(r, 2, bar)
         bar.setValue(t.progress)
         bar.setFormat(f"{t.finished}/{t.total} 页")
-        bar.setTextVisible(True)
-        bar.setMinimumWidth(140)
-        self.table.setCellWidget(r, 2, bar)
-        self.table.item(r, 3).setText(STATUS_TEXT.get(t.status, t.status))
+        it3 = self.table.item(r, 3)
+        if it3 is None:
+            it3 = QTableWidgetItem("")
+            self.table.setItem(r, 3, it3)
+        it3.setText(STATUS_TEXT.get(t.status, t.status))
         sp = f"{t.speed:.1f} 页/s" if t.speed else ""
         if t.eta and t.status == "running":
             sp += f"  剩 {int(t.eta)}s"
@@ -844,15 +863,45 @@ class TasksPage(QWidget):
             self.table.scrollToBottom()
 
     def _on_log(self, level: str, msg: str):
+        # 日志框以前没有上限：一个几百页的任务能刷上千行，跑一晚上内存只涨不降。
+        # 超过 MAX_LOG_LINES 就砍掉最早的 1/4（按块砍，避免每行都触发一次删除）。
         self.log.appendPlainText(msg)
+        doc = self.log.document()
+        if doc.blockCount() > self.MAX_LOG_LINES:
+            cur = self.log.textCursor()
+            cur.movePosition(QTextCursor.Start)
+            cur.movePosition(QTextCursor.Down, QTextCursor.KeepAnchor,
+                             self.MAX_LOG_LINES // 4)
+            cur.removeSelectedText()
 
     def _sel(self, action: str):
-        for idx in self.table.selectionModel().selectedRows():
-            tid = self.table.item(idx.row(), 0).data(Qt.UserRole)
-            for t in self.mgr.tasks():
-                if t.comic == self.table.item(idx.row(), 0).text() and t.tid:
-                    getattr(self.mgr, action)(t.tid)
-                    break
+        """对选中的行执行 pause/resume/retry/cancel。
+
+        必须按行里存的 tid 操作。旧写法从第 0 列取 Qt.UserRole 拿 tid，但
+        _append 从来没 setData 过，拿到恒为 None，于是退化成「按漫画名匹配
+        第一个任务」—— 同一部漫画下暂停第 3 话会暂停第 1 话，删错任务。
+        """
+        rows = sorted({i.row() for i in self.table.selectionModel().selectedRows()})
+        if not rows:
+            return
+        for r in rows:
+            it = self.table.item(r, 0)
+            tid = it.data(Qt.UserRole) if it is not None else None
+            if not tid:
+                continue
+            fn = getattr(self.mgr, action, None)
+            if fn is not None:
+                fn(tid)
+
+    def _clear_finished(self):
+        """清掉已完成/已取消的任务，并把表格一起刷新。
+
+        DownloadManager.clear_finished() 只从内存里摘任务、不发任何信号，
+        所以直接连它的话表格行会留在原地 —— 用户点了「清理已完成」，行还在，
+        再点「暂停」就操作到一条已经不存在的任务上。
+        """
+        self.mgr.clear_finished()
+        self.reload()
 
     def _bulk(self, action: str):
         for t in self.mgr.tasks():
@@ -865,31 +914,29 @@ class TasksPage(QWidget):
 # ==================================================================== 收藏页
 
 def _row_prev_total(row: Any) -> int:
-    """从收藏行里取「上一次检查时的章节数」。
+    """从收藏行里取「上一次检查时的最大话号」（界面上「上次章节数」那一列）。
 
-    优先读 base_total（每次检查时冻住的旧值）。老库还没有这一列、或它还是
-    -1 时，退回 last_total（那其实是"最近一次"的章节数，勉强能用），再退回
-    last_index + 1 —— 更老版本里 last_index 存的是列表位置，其值 +1 就是
-    当时的章节数。都没有就给 -1，界面上显示「—」。
+    优先读 base_no（每次检查时冻住的旧话号）。老库还没有这一列、或它还是
+    -1 时，退回 last_no（那是"最近一次"的话号，勉强能用）。
+    **故意不回退到 base_total / last_index**：那是章节数 / 列表位置，和话号
+    是不同的量，拿来显示会凭空多报好多话。都没有就给 -1，界面上显示「—」。
     """
-    for key in ("base_total", "last_total"):
+    for key in ("base_no", "last_no"):
         try:
             v = int(row[key])
             if v >= 0:
                 return v
         except (KeyError, IndexError, TypeError, ValueError):
             pass
-    try:
-        idx = int(row["last_index"])
-        return idx + 1 if idx >= 0 else -1
-    except (KeyError, IndexError, TypeError, ValueError):
-        return -1
+    return -1
 
 
 class FavoritesPage(QWidget):
     open_comic = Signal(object)
 
     # 表格列：0 漫画 1 作者 2 来源 3 最新章节 4 上次章节数 5 状态 6 上次检查 7 网址
+    # 列名「上次章节数」沿用历史叫法（用户熟悉的说法），但内容口径是**最大话号**：
+    # 显示 base_no（上次检查时源站的最大话号），不是章节总数。
     (COL_TITLE, COL_AUTHOR, COL_SITE, COL_LATEST, COL_PREV, COL_STATE,
      COL_CHECKED, COL_URL) = range(8)
 
@@ -923,9 +970,11 @@ class FavoritesPage(QWidget):
         self.table.horizontalHeader().setStretchLastSection(True)
         # 「上次检查」才有意义的那一列给个提示，免得和「上次检查」时间列搞混
         self.table.horizontalHeaderItem(4).setToolTip(
-            "上一次检查时源站共多少话。\n"
-            "和本次的章节数对比，就能看出到底有没有更新。\n"
-            "本次章节数在「状态」列的悬停提示里。")
+            "上一次检查时源站的最大话号（例如「第 100 话」就记成 100 话）。\n"
+            "和本次的最大话号对比，就能看出到底多了几话。\n"
+            "按话号比而不是按章节总数比：源站跳话/缺话时，总数只多 1、"
+            "实际却多出十几话可看。\n"
+            "本次话号在「状态」列的悬停提示里。")
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         # 支持多选（Ctrl/Shift 点），才能一次删掉好几条、也能只检查选中的
@@ -975,25 +1024,25 @@ class FavoritesPage(QWidget):
 
     @staticmethod
     def _prev_cell(row: Any, up: Any) -> Any:
-        """「上次章节数」单元格：上一次检查时源站有多少话。
+        """「上次章节数」单元格：上一次检查时源站的最大话号（如「100 话」）。
 
         两个取值来源，按调用场景分工：
         - `row` 有值（`reload()` 整表重画）：以**库里存的**为准 ——
-          `base_total` 是上次检查后冻住的旧值，`last_total` 是本次值。
+          `base_no` 是上次检查后冻住的旧话号，`last_no` 是本次值。
           这样检查跑完、甚至重启软件之后，这一列仍然对得上。
         - `row` 为 None（`_paint_row()` 就地刷某一行）：用本轮内存里的
-          `up.prev_total` / `up.total`，避免依赖刚写库的时序。
+          `up.prev_no` / `up.latest_no`，避免依赖刚写库的时序。
         """
         if row is not None:
             prev = _row_prev_total(row)
             try:
-                t = int(row["last_total"])
-                now = t if t >= 0 else -1
+                n = int(row["last_no"])
+                now = n if n >= 0 else -1
             except (KeyError, IndexError, TypeError, ValueError):
                 now = -1
         else:
-            prev = getattr(up, "prev_total", -1) if up is not None else -1
-            now = int(getattr(up, "total", 0) or -1) if up is not None else -1
+            prev = int(getattr(up, "prev_no", -1) or -1) if up is not None else -1
+            now = int(getattr(up, "latest_no", -1) or -1) if up is not None else -1
 
         cell = QTableWidgetItem("—" if prev < 0 else f"{prev} 话")
         if prev < 0:
@@ -1001,12 +1050,17 @@ class FavoritesPage(QWidget):
             cell.setToolTip("还没检查过，没有可对比的基准")
             return cell
 
-        tip = [f"上次检查时源站共 {prev} 话"]
+        tip = [f"上次检查时最大话号：{prev} 话"]
         if now >= 0:
             delta = now - prev
-            tip.append(f"本次 {now} 话"
-                       + (f"（{'多' if delta > 0 else '少'} {abs(delta)} 话）" if delta
+            tip.append(f"本次最大话号：{now} 话"
+                       + (f"（多 {delta} 话）" if delta > 0
+                          else f"（少 {-delta} 话）" if delta < 0
                           else "（没变）"))
+        else:
+            # 源站标题里抠不出话号（这一话可能只写「番外」之类），
+            # 这时界面上不显示对比，但 tooltip 要说清为什么
+            tip.append("本次没能从章节标题里认出话号")
         cell.setToolTip("\n".join(tip))
         if now >= 0 and now != prev:
             cell.setForeground(QBrush(QColor("#c60")))
@@ -1058,6 +1112,8 @@ class FavoritesPage(QWidget):
                     state.setForeground(QBrush(QColor("#4a9")))
                 # 悬停能看到「本轮拿什么比出来的、两边各是多少」，出问题时不用猜
                 tip = [up.message or up.display]
+                if up.latest_no >= 0:
+                    tip.append(f"本次最大话号：{up.latest_no} 话")
                 if up.total:
                     tip.append(f"本次章节数：{up.total}")
                 state.setToolTip("\n".join(tip))
@@ -1201,6 +1257,8 @@ class FavoritesPage(QWidget):
                                                    up.latest_index))
         state = QTableWidgetItem(up.display)
         tip = [up.message or up.display]
+        if up.latest_no >= 0:
+            tip.append(f"本次最大话号：{up.latest_no} 话")
         if up.total:
             tip.append(f"本次章节数：{up.total}")
         state.setToolTip("\n".join(tip))
@@ -1668,10 +1726,25 @@ class SettingsPage(QWidget):
             "split_min_height": self.sp_split.value(),
             "referer_policy": self.cb_referer.currentData(),
         })
+        # 站点启用状态要落盘：以前只调 registry().set_enabled()，改的是内存里
+        # 的 Site.enabled，config 一个字都没写，重启后用户取消勾选的站点又全
+        # 回来了。set_enabled_many 会一次性写进 config 的 sites 表。
+        states = {}
         for r in range(self.tbl_sites.rowCount()):
             it = self.tbl_sites.item(r, 0)
             if it:
-                registry().set_enabled(it.data(Qt.UserRole), it.checkState() == Qt.Checked)
+                sid = it.data(Qt.UserRole)
+                if sid:
+                    states[sid] = it.checkState() == Qt.Checked
+        registry().set_enabled_many(states)
+        # 并发数要热生效：DownloadManager 的信号量是 start() 时按当时的配置建的，
+        # 之后改设置只写进 config，正在跑的队列还用旧并发，必须重启软件才变。
+        # apply_concurrency 会在下载线程里换掉信号量（缩容时用占位协程收走多余
+        # 许可，避免正在下载的任务被半途卡死）。管理器没起来时返回 0，无副作用。
+        try:
+            manager().apply_concurrency(self.sp_conc.value())
+        except Exception as e:      # 槽里抛异常会被 Qt 吞掉，这里留个日志
+            log.warning("应用并发数失败：%s", e)
         self.lb_tip.setText("已保存 ✓")
         QTimer.singleShot(3000, lambda: self.lb_tip.setText(""))
 

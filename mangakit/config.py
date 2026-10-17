@@ -276,10 +276,16 @@ class Config:
         with self._lock:
             return dict(self._data.setdefault("sites", {}).setdefault(site_id, {}))
 
-    def set_site(self, site_id: str, values: dict[str, Any]) -> None:
+    def set_site(self, site_id: str, values: dict[str, Any], *, save: bool = True) -> None:
+        """写入某个站点的私有设置（目前用到的是 enabled）。
+
+        save=False 用于批量写：调用方改完一批再统一 save() 一次，
+        避免逐个站点各落一次整份 JSON（26 个站点就是 26 次写盘）。
+        """
         with self._lock:
             self._data.setdefault("sites", {}).setdefault(site_id, {}).update(values)
-            self.save()
+            if save:
+                self.save()
 
     @property
     def download_dir(self) -> Path:

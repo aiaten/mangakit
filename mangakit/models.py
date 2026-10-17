@@ -83,7 +83,7 @@ class FavoriteUpdate:
     total: int = 0                 # 源站当前总章数
     prev_total: int = -1           # 上次检查时的总章数（-1 = 第一次，没有基准）
     prev_no: int = -1              # 上次检查时的话号（-1 = 没有基准）
-    by: str = ""                   # 这次怎么比出来的：count | no | pos
+    by: str = ""                   # 这次怎么比出来的：count | no
     new_count: int = 0             # 比上次多出来几话
     status: str = "ok"             # ok | new | first | error | unsupported
     message: str = ""              # 失败原因 / 备注

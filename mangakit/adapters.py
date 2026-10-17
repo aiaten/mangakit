@@ -1,7 +1,8 @@
 """内置站点适配器。
 
 只在这里写「规则 JSON 搞不定的站点」，其余站点都用 rules/*.json 声明。
-注册方式：模块导入时调用 `registry().register_adapter(Cls)`。
+注册方式：由 SiteRegistry._load_builtin() 调用本模块的 register_all(reg)，
+不要在模块导入时自己调 registry()——那会在注册表构造途中递归建出第二个实例。
 """
 
 from __future__ import annotations
@@ -74,7 +75,7 @@ class MStationAdapter(SiteAdapter):
         doc = LH.fromstring(html)
         out: list[Chapter] = []
         seen: set[str] = set()
-        for n in Selector({"css": "#chapterlist a", "all": True}).find_all(doc, url):
+        for n in Selector({"css": "#chapterlist a"}).find_nodes(doc):
             href = n.get("href") if hasattr(n, "get") else ""
             if not href:
                 continue
@@ -138,7 +139,7 @@ class KuaikanAdapter(SiteAdapter):
         from .sites import Selector
         doc = LH.fromstring(html)
         out: list[Chapter] = []
-        for n in Selector({"css": ".chapter-list a, .chapter-item", "all": True}).find_all(doc, url):
+        for n in Selector({"css": ".chapter-list a, .chapter-item"}).find_nodes(doc):
             href = n.get("href") if hasattr(n, "get") else ""
             if not href:
                 continue
@@ -217,7 +218,7 @@ class KZAdapter(SiteAdapter):
         from lxml import html as LH
         from .sites import Selector
         doc = LH.fromstring(html)
-        for n in Selector({"css": "#chapterlist a", "all": True}).find_all(doc, url):
+        for n in Selector({"css": "#chapterlist a"}).find_nodes(doc):
             h = n.get("href") if hasattr(n, "get") else ""
             if h:
                 u = normalize_url(url, h)
@@ -309,9 +310,12 @@ class GenericApiAdapter(SiteAdapter):
         return segs[-1] if segs else ""
 
 
-def _register() -> None:
-    from .sites import registry
-    reg = registry()
+def register_all(reg: "SiteRegistry") -> None:
+    """把本模块的内置适配器注册进给定的注册表实例。
+
+    参数是注册表本身而不是隐式取全局单例：SiteRegistry.__init__ 期间
+    全局单例尚未赋值，只能由调用方把「正在构造的那个」传进来。
+    """
     reg.sites.setdefault("mstation", Site(
         id="mstation", name="M站模板（dm5w/6htxt 等）",
         domains=["dm5w.com", "dm5w.net", "dm5w.cc", "dm5w.vip", "dm5w1.com",
@@ -327,6 +331,3 @@ def _register() -> None:
     ))
     for cls in (MStationAdapter, KuaikanAdapter, KZAdapter):
         reg.register_adapter(cls)
-
-
-_register()
