@@ -1,13 +1,13 @@
 # 漫卷 MangaKit
 
-> 版本 **0.3.2** ｜ 通用漫画批量下载器 ｜ Windows
+> 版本 **0.3.3** ｜ 通用漫画批量下载器 ｜ Windows
 
 **漫卷 MangaKit 是一个本地规则驱动的漫画下载软件**：把漫画网站的页面结构写成 JSON 规则，
 由程序直接抓取详情页、章节列表和图片地址并下载。它**不走任何第三方服务器**，
 全部解析在你自己电脑上完成。
 
 *（上面这段自我描述与版本号引自 `使用文档.md` 开头的版本栏与
-`mangakit/__init__.py` 里的 `__version__`，两处当前都是 **0.3.2**。
+`mangakit/__init__.py` 里的 `__version__`，两处当前都是 **0.3.3**。
 本文所有对文档的引用一律按**章节名**给出，不写行号 —— 那份文档在改的时候行号会漂。）*
 
 ## 给谁用
@@ -604,7 +604,7 @@ MangaPage._on_comic  →  内部自动 store().add_favorite()
 
 - 配置：`mangakit.spec`，用 `python -m PyInstaller --noconfirm --clean mangakit.spec`。
 - 产物：`dist\MangaKit.exe`，**onefile**（单文件）、**windowed**（双击不弹黑框）。
-- **实测体积 172.9 MB**（172,923,118 字节，`dist\MangaKit.exe`，2026-10-15 00:16:06 构建）。
+- **实测体积 172.9 MB**（172,925,716 字节，`dist\MangaKit.exe`，2026-10-17 15:24:34 构建）。
   v0.1.0 时代是 63.4 MB —— 涨上来的部分基本就是 QtWebEngine 那套 Chromium 运行库。
   v0.3.1 移除启动画面后比 v0.3.0 小了约 1.7 MB（不再打包 Tcl/Tk 那套 DLL）。
 - 站点规则以 data 文件形式打包（`datas` 里 `mangakit/rules` → `_MEIPASS/mangakit/rules`），
@@ -708,7 +708,7 @@ GitHub 对**单个 Git 对象**有 **100 MB** 硬上限，对 **Release 资产**
 
 | 项 | 实测 |
 | --- | --- |
-| 正式版 exe 体积 | **172,923,118 字节（≈172.9 MB）**，2026-10-15 00:16:06 构建（v0.3.2） |
+| 正式版 exe 体积 | **172,925,716 字节（≈172.9 MB）**，2026-10-17 15:24:34 构建（v0.3.3） |
 | 对比 v0.1.0（无 WebEngine） | 63.4 MB —— 差出来的约 109 MB 基本就是 Chromium |
 | v0.3.1 减掉的 | 约 1.7 MB（移除启动画面，不再打包 `tcl86t.dll` 905 KB + `tk86t.dll` 707 KB + `Splash-00.res` 62 KB） |
 | 被过滤掉的调试资源 | `qtwebengine_devtools_resources*.pak`，实测 **83.4 MB**（只给 F12 远程调试用） |
@@ -753,13 +753,14 @@ v0.1.0 那会儿 `__version__` 一直是 `0.1.0`，而你手上那个 exe 可能
 （`search_done` 回的是列表而非总数，且没有 `search_partial`）—— 见 `使用文档.md`
 的「九、目录结构（源码）→ 冒烟脚本分工」一节。
 
-现在版本号已抬到 **0.3.2**，而且 **exe 内嵌了版本资源**（`assets/version_info.txt`，
+现在版本号已抬到 **0.3.3**，而且 **exe 内嵌了版本资源**（`assets/version_info.txt`，
 版本号从 `mangakit/__init__.py` 的 `__version__` 现读），所以确认方式很直接：
 
 1. **看属性（最直接）**：右键 `MangaKit.exe` → 属性 → **详细信息** →
-   看 **FileVersion**。是 `0.3.2` 就是最新版；`0.3.1`/`0.3.0`/`0.2.0`/`0.1.0` 或空白就是老的。
+   看 **FileVersion**。是 `0.3.3` 就是最新版；`0.3.2`/`0.3.1`/`0.3.0`/`0.2.0`/`0.1.0` 或空白就是老的。
    另外 `0.3.1` 起**双击后不应再出现任何 `tk` 小窗口**（那是老版的坏启动画面）；
-   `0.3.2` 起**日志里不应再有 `pyi_splash` 警告**（`%APPDATA%\mangakit\logs\mangakit.log`）。
+   `0.3.2` 起**日志里不应再有 `pyi_splash` 警告**（`%APPDATA%\mangakit\logs\mangakit.log`）；
+   `0.3.3` 起**漫画名/章节名是 `CON`、`NUL` 这类保留设备名、或路径过长时也能正常下载**。
 2. **跑自检**：`MangaKit.exe --selftest report.txt`，末尾 `SELFTEST PASS` 且
    含 `webengine` 项才算完整的新版（老 exe 没有 webengine 这一项）。
 3. **跑时序核对**（改代码后自查最有用）：
@@ -836,6 +837,6 @@ kanman 的图片地址带时间戳签名，正确做法是**重新打开该章�
 
 ## 许可
 
-漫卷 MangaKit v0.3.1 ｜ 仅供个人学习与离线备份使用。
+漫卷 MangaKit v0.3.3 ｜ 仅供个人学习与离线备份使用。
 
 下载的内容请自行遵守各站点的使用条款。完整使用说明见 [使用文档.md](使用文档.md)。

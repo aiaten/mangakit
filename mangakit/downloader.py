@@ -21,7 +21,7 @@ from .config import WriteDenied, _why_unwritable, config, ensure_writable
 from .http_client import HttpClient, client
 from .images import (
     convert_webp_to_png, finalize, is_image, page_filename,
-    safe_filename, split_long, verify,
+    safe_filename, safe_path, split_long, verify,
 )
 from .logsetup import get
 from .models import Chapter, Comic, Task
@@ -126,10 +126,12 @@ class DownloadManager:
         cfg = config()
         tid = uuid.uuid4().hex[:12]
         base = folder or Path(str(cfg.get("download_dir")))
-        vol = safe_filename(chapter.volume or chapter.title or f"第{chapter.index + 1}话")
-        comic_dir = safe_filename(comic.title or "未命名")
+        vol = chapter.volume or chapter.title or f"第{chapter.index + 1}话"
         try:
-            path = Path(base) / comic_dir / vol
+            # tail=40 是给下面 .part 子目录 / 页码文件 / .tmp 后缀留的余量。
+            # 走 safe_path 而不是手拼，是为了在别人机器上也不撞 MAX_PATH=260：
+            # 本机路径短时复现不了，只有分发出去了才会以 winerror=3 爆出来。
+            path = safe_path(Path(base), comic.title or "未命名", vol, tail=40)
         except Exception:
             path = Path(base) / "downloads"
         t = Task(
@@ -286,7 +288,8 @@ class DownloadManager:
         # 只试 mkdir 也不够：受限环境（沙箱/隔离目录/被组策略接管的用户目录）下
         # 目录往往建得出来、空文件却建不出来，硬扛到下面 tmp.write_bytes 才炸。
         ensure_writable(ctx.folder)
-        part = ctx.folder / f"{safe_filename(ctx.chapter_title)}.part"
+        # 临时目录名也按预算截短（tail=40 里已经算上了这层 + 页码文件 + .tmp）
+        part = ctx.folder / f"{safe_filename(ctx.chapter_title, maxlen=24)}.part"
         ensure_writable(part)
 
         urls = await adapter.parse_pages(ctx.chapter_url)

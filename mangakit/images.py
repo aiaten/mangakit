@@ -167,8 +167,24 @@ def guess_name(index: int, total: int) -> str:
     return f"{index + 1:0{w}d}"
 
 
+# Windows 默认 MAX_PATH = 260（按字符算）。这里留 20 字余量，因为同一目录下
+# 还会多出「.part 子目录 + 页码文件名 + .tmp 后缀」这几层。不处理的话，长标题
+# 漫画在别人机器上会以 winerror=3 / FileNotFoundError 的形式失败，而本机路径
+# 短的话根本复现不了——属于只在分发后才暴露的那类问题。
+MAX_PATH_BUDGET = 240
+
+# Windows 保留设备名。把它们当目录/文件名时，mkdir 看起来会成功，但只要
+# 往里写文件就 FileNotFoundError（实测 winerror=206/3）。漫画标题里出现
+# "NUL"、"CON"、"COM1" 这类短词是可能的，必须加前缀躲开。
+_RESERVED_DEVICE = (
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{i}" for i in range(10)}
+    | {f"LPT{i}" for i in range(10)}
+)
+
+
 def safe_filename(name: str, maxlen: int = 120) -> str:
-    """清理 Windows 非法文件名字符。"""
+    """清理 Windows 非法文件名字符、保留设备名、首尾空格与点。"""
     bad = '<>:"/\\|?*'
     out = "".join("_" if ch in bad else ch for ch in name)
     out = out.strip(" .")
@@ -177,7 +193,33 @@ def safe_filename(name: str, maxlen: int = 120) -> str:
         out = out.replace("  ", " ")
     if len(out) > maxlen:
         out = out[:maxlen].rstrip(" .")
-    return out or "untitled"
+    out = out or "untitled"
+    # 判断要按「第一段」来：CON.txt 也会被当成设备名（Windows 的规则是
+    # 只看主名），所以取第一个 '.' 之前的部分。
+    if out.split(".")[0].upper() in _RESERVED_DEVICE:
+        out = "_" + out
+    return out
+
+
+def safe_path(base: Path, *names: str, tail: int = 40) -> Path:
+    """在 base 下拼若干层目录，超长时逐层截短，保证不撞 MAX_PATH。
+
+    tail = 最后一层目录之下还要占掉的字符数（.part 子目录、页码文件名、
+    .tmp 后缀等）。名字等长分配额度：短名浪费的空额会被长名用不上，
+    但结果一定不超预算，这比「刚好塞满」重要。
+    """
+    cleaned = [safe_filename(n) for n in names]
+    if cleaned:
+        room = MAX_PATH_BUDGET - len(str(base)) - tail - len(cleaned)
+        alloc = max(8, room // len(cleaned))
+        cleaned = [
+            (c[:alloc].rstrip(" .") or "untitled") if len(c) > alloc else c
+            for c in cleaned
+        ]
+    p = base
+    for c in cleaned:
+        p = p / c
+    return p
 
 
 def page_filename(index: int, total: int, ext: str) -> str:

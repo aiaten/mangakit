@@ -340,8 +340,8 @@ def _run_cli(args: argparse.Namespace) -> int:
             pages = await adapter.parse_pages(target.url)
             print(f"图片数：{len(pages)}")
             from pathlib import Path
-            from .images import finalize, is_image, page_filename, safe_filename
-            outdir = Path(config().download_dir) / safe_filename(comic.title) / safe_filename(target.title)
+            from .images import finalize, is_image, page_filename, safe_path
+            outdir = safe_path(Path(config().download_dir), comic.title, target.title, tail=40)
             try:
                 ensure_writable(outdir)
             except WriteDenied as e:
