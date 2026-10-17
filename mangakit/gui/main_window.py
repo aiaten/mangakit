@@ -2415,6 +2415,12 @@ class BrowserPage(QWidget):
 
 # ==================================================================== 主窗口
 
+# 左侧导航行号 = 右侧 QStackedWidget 索引，二者共用下面这一份定义。
+# 以前 _nav() / _goto() 里写的是裸数字（i == 3、_goto(6)…），插页或调序会
+# **静默**错位（点了收藏却刷新图源仓库），所以改成常量。
+PG_SEARCH, PG_MANGA, PG_TASKS, PG_FAVS, PG_SETTINGS, PG_SOURCES, PG_BROWSER = range(7)
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -2433,7 +2439,8 @@ class MainWindow(QMainWindow):
         self.favs = FavoritesPage(self.svc)
         self.settings = SettingsPage()
         # 这两个页面必须加在最后：导航行号与栈索引一一对应，中间插页会让
-        # _nav() 里 `if i == 3: self.favs.reload()` 这类硬编码全部错位。
+        # _nav() 里 `if i == PG_FAVS:` 这类判定错位（原来是硬编码数字，
+        # 现在换成下面的 PAGES 元组 + 常量，插页也只改一处）。
         # SourcePage 构造期不联网；BrowserPage 构造期不碰 WebEngine（懒加载）。
         self.sources = SourcePage()
         self.browser = BrowserPage()
@@ -2455,18 +2462,17 @@ class MainWindow(QMainWindow):
         nav.setFixedWidth(132)
         nav.setFrameShape(QFrame.NoFrame)
         self.nav = nav
-        # 顺序 = 栈索引：search 0 / manga 1 / tasks 2 / favs 3 / settings 4 /
-        # sources 5 / browser 6。_nav() 里按索引做了硬编码，别在这里插队。
-        for name, page in (("搜索 / 打开", self.search), ("漫画详情", self.manga),
-                           ("下载任务", self.tasks), ("收藏", self.favs),
-                           ("设置", self.settings), ("图源仓库", self.sources),
-                           ("内置浏览器", self.browser)):
+        # 顺序 = 栈索引，**只在这里定义一次**。(导航文字, 页面) 元组同时喂给
+        # 导航栏和堆栈，顺序天然一致；插页/调序只改这一处，下面的 PG_* 常量自动跟着变。
+        pages = (("搜索 / 打开", self.search), ("漫画详情", self.manga),
+                 ("下载任务", self.tasks), ("收藏", self.favs),
+                 ("设置", self.settings), ("图源仓库", self.sources),
+                 ("内置浏览器", self.browser))
+        for name, page in pages:
             nav.addItem(name)
             page._nav_label = name
         nav.currentRowChanged.connect(self._nav)
-        # 按顺序把页面塞进堆栈，与左侧导航一一对应
-        for page in (self.search, self.manga, self.tasks, self.favs,
-                     self.settings, self.sources, self.browser):
+        for _name, page in pages:
             self.stack.addWidget(page)
 
         wrap = QWidget()
@@ -2503,9 +2509,9 @@ class MainWindow(QMainWindow):
 
     def _nav(self, i):
         self.stack.setCurrentIndex(i)
-        if i == 3:
+        if i == PG_FAVS:
             self.favs.reload()
-        elif i == 5:
+        elif i == PG_SOURCES:
             # 图源仓库第一次进来才联网；已经拉过（或正忙）时 ensure_loaded 自己是空操作。
             # 放在这里而不是构造函数里，是为了不给启动路径加一次网络请求。
             self.sources.ensure_loaded()
@@ -2515,7 +2521,7 @@ class MainWindow(QMainWindow):
         # 先 open_url 再切页：这样懒加载建视图时 _pending_url 已经是目标地址，
         # 只会加载一次（反过来会先加载首页再跳一次，白跑一趟网络）。
         self.browser.open_url(url)
-        self._goto(6)
+        self._goto(PG_BROWSER)
 
     def _on_source_added(self, sid: int) -> None:
         """图源页写库成功后刷新设置页的站点表。"""
@@ -2525,7 +2531,7 @@ class MainWindow(QMainWindow):
             log.warning("设置页刷新失败：%s", exc)
 
     def show_comic(self, c: Comic):
-        self._goto(1)
+        self._goto(PG_MANGA)
         if c.url:
             self.manga.load(c.url)
 
@@ -2546,7 +2552,7 @@ class MainWindow(QMainWindow):
 
     def add_tasks(self, comic: Comic, chapters: list[Chapter]):
         self.mgr.enqueue_comic(comic, chapters)
-        self._goto(2)
+        self._goto(PG_TASKS)
         self.tasks.reload()
         QMessageBox.information(self, "已加入队列",
                                 f"已加入 {len(chapters)} 个章节，正在下载。\n可在「下载任务」查看进度。")
