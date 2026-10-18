@@ -111,4 +111,11 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    code = main()
+    # 退出前按序拆 Qt（本脚本建了 SettingsPage 等控件），否则 Windows 会弹
+    # 「python.exe - 应用程序错误 ... 该内存不能为 read」。
+    # 成因与实测数据见 tools/qt_teardown.py 的模块注释。
+    from qt_teardown import teardown
+    teardown()
+    raise SystemExit(code)

@@ -540,46 +540,23 @@ def check_webengine_unavailable(app, mw) -> bool:
 
 
 def teardown(app) -> None:
-    """退出前把后台线程收干净（收尾失败不影响断言结果）。
+    """退出前把 Qt 对象按序拆干净（收尾失败不影响断言结果）。
 
-    背景（已实测，别再重复排查）：本脚本在**进程关闭阶段**会以
-    -1073740791（0xC0000409）或 -1073741819（0xC0000005）收场。它是
-    **脚本自身的收尾竞态，不是产品缺陷**，三条证据：
+    实现搬到 tools/qt_teardown.py 了（其它脚本也要用，且那里写了完整的根因
+    说明和实测数据）。这里只做转发，保留函数名是因为 main() 末尾在调它。
 
-      1. 真程序路径干净退出：MainWindow -> show -> 切到图源页/浏览器页 ->
-         close，exit=0（两种页面各测过）；
-      2. `tools\\gui_smoke.py` 连跑三次都是 exit=0；
-      3. 脚本里装上 faulthandler 或 qInstallMessageHandler 之后 exit=0
-         ——改成 heisenbug 了，说明是时序相关的析构竞态。
-
-    成因：脚本里造过好几个 MainWindow，每个都 `manager().start()` 起了一条
-    守护线程 mangakit-loop（asyncio run_forever）并留下若干 QRunnable；
-    解释器关闭时 Qt 先拆 C++ 侧、Python 侧线程还在跑，析构顺序就成竞态。
-    真程序走 QApplication 事件循环正常退出，不会踩到。
-
-    这里尽力停掉下载管理器循环并排空线程池，减小竞态窗口；真正保证退出码
-    可信的是 `__main__` 里的 os._exit（见下）。
+    历史教训（别重犯）：
+      * 曾经把退出崩溃归因为「脚本自身的收尾竞态」，用 os._exit 绕过解释器
+        关闭阶段 —— **那个修法是错的**，实测崩溃率从 1/10 升到 9/10。
+      * 本页会真起 QWebEngineView，所以除了「等线程收工」还必须**显式发**
+        DeferredDelete 事件：processEvents() 不会处理它，deleteLater 投递的
+        删除会一直拖到解释器退出，Qt profile 先被释放、WebEnginePage 后析构，
+        就是那行 `Release of profile requested but WebEnginePage still not
+        deleted` + 0xC0000005。
     """
-    try:
-        from mangakit.downloader import manager
-        manager().stop()
-    except Exception:  # noqa: BLE001 - 收尾失败不该改变断言结果
-        pass
-    try:
-        from PySide6.QtCore import QThreadPool
-        QThreadPool.globalInstance().waitForDone(5000)
-    except Exception:  # noqa: BLE001
-        pass
-    for w in list(app.topLevelWidgets()):
-        try:
-            w.close()
-            w.deleteLater()
-        except Exception:  # noqa: BLE001
-            pass
-    app.processEvents()
-    app.sendPostedEvents(None, 0)   # 0 = QEvent.DeferredDelete
-    app.processEvents()
-    gc.collect()
+    from qt_teardown import teardown as _teardown
+
+    _teardown(app)
 
 
 def check_app_exit_clean(app, mw) -> bool:
@@ -659,12 +636,16 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    # 本脚本自己会在解释器关闭阶段踩到 Qt/WebEngine 的析构竞态（见 teardown 注释），
-    # 那与断言结果无关，却会让退出码变成 -1073740791 之类的垃圾值，脚本就没法当
-    # 回归门用了。所有断言与 teardown 都已在 main() 里跑完，这里直接按结果
-    # os._exit，绕开解释器关闭阶段；「真程序能否干净退出」由 check_app_exit_clean
-    # 另起子进程单独断言，不靠本进程的退出码背书。
-    _code = main()
-    sys.stdout.flush()
-    sys.stderr.flush()
-    os._exit(_code)
+    # 曾经这里用 os._exit(_code) 绕「解释器关闭阶段析构竞态」，那是**错的**：
+    # os._exit 跳过 Python 侧清理，Qt 的静态对象和线程却仍在收尾，等于把
+    # 「先等线程收工」这一步彻底省掉 —— 实测崩溃率从偶发（1/10）升到 9/10。
+    #
+    # 后来换成 waitForDone + close + deleteLater + processEvents，仍然 6/6 崩，
+    # stderr 固定是 `Release of profile requested but WebEnginePage still not
+    # deleted`。真正的原因是 processEvents() **不处理** DeferredDelete 事件：
+    # deleteLater() 投递的删除会一直拖到解释器退出，Qt 的 profile 先被释放、
+    # WebEnginePage 后析构 → 0xC0000005。teardown() 里补了显式
+    # sendPostedEvents(None, int(QEvent.Type.DeferredDelete))，实测 8/8 干净。
+    # 详见 tools/qt_teardown.py 的模块注释。
+    sys.exit(main())
+

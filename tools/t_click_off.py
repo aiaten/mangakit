@@ -103,3 +103,9 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # 退出前按序拆 Qt（本脚本建了 SearchPage，含 CoverLoader 的 QThreadPool），
+    # 否则 Windows 会弹「python.exe - 应用程序错误 ... 该内存不能为 read」。
+    # 成因与实测数据见 tools/qt_teardown.py 的模块注释。
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from qt_teardown import teardown
+    teardown()

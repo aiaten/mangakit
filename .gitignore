@@ -85,6 +85,29 @@ _MEI*/
 /mk_fname_*
 /mktest_*
 /chk_*
+# 下面这些前缀是 2026-10-18 补的：当天排查 Qt 退出崩溃时才发现，实际在根目录
+# 攒下来的前缀比上面列的多得多（一次排查就攒了 300 多个目录，git status 里
+# 全是噪音，真正的改动反而看不见）。原则不变：只兜测试脚本自己建的临时前缀，
+# 不写笼统的 mk_*。
+/mk_favbtn_*
+/mk_probe_*
+/mk_p_*
+/mk_bench_*
+/mk_conc_*
+/mk_nav_*
+/mk_smoke_*
+/mk_upd_*
+/mk_gui_addsite_*
+/mk_iso_*
+/mk_yck_*
+/mk_export_*
+
+# tools\t_publish.py 的两个中间产物。它们本该落在 tempfile.gettempdir()，但本机
+# 系统 TEMP 不可写、gettempdir() 退回仓库根，于是 dry-run 一次就在根目录留下
+# MangaKit-launcher.bat（启动器的临时副本）和 mangakit_release_*.md（Release 说明）。
+# 这两个都是脚本自动生成的，绝不该提交。
+/MangaKit-launcher.bat
+/mangakit_release_*.md
 
 # tools\verify.py 的实网验证结果：每次跑都会重写（站点章节数天天变），
 # 想把它当发布存证就删掉这一行。

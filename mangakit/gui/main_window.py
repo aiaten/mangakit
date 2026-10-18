@@ -395,6 +395,7 @@ class MangaPage(QWidget):
 
     enqueue = Signal(object, object)   # (comic, list[Chapter])
     open_browser = Signal(str)         # 请求用内置浏览器打开当前漫画的网址
+    fav_changed = Signal()             # 收藏被加/删，收藏页需要重载
 
     def __init__(self, svc: ComicService, parent=None):
         super().__init__(parent)
@@ -440,6 +441,13 @@ class MangaPage(QWidget):
         # 「在浏览器中打开」入口：站点要过验证码 / 图片防盗链、或者解析失败时，
         # 用户需要自己去站点页面看一眼。走应用内置浏览器，别把用户丢到系统浏览器里。
         row = QHBoxLayout()
+        # 收藏按钮：打开漫画**不会**自动收藏了（以前会自动写库，搜出来看一眼就
+        # 多一条收藏，非常烦）。现在只有点了这个按钮才收藏，再点一次取消。
+        self.btn_fav = QPushButton("收藏")
+        self.btn_fav.setEnabled(False)
+        self.btn_fav.setToolTip("把当前漫画加入收藏（再点一次取消收藏）")
+        self.btn_fav.clicked.connect(self._toggle_fav)
+        row.addWidget(self.btn_fav)
         self.btn_browser = QPushButton("在浏览器中打开")
         self.btn_browser.setEnabled(False)
         self.btn_browser.setToolTip("用应用内置浏览器打开当前漫画的网址")
@@ -546,8 +554,12 @@ class MangaPage(QWidget):
     # ---- 载入 ----
     def load(self, url: str):
         self._url = url
+        # 换书时必须先把上一本清掉：否则解析期间按钮还停在上一本的收藏状态，
+        # 这时候点「收藏」收的是上一本。_open_in_browser 同理（会用旧网址）。
+        self.comic = None
         self.status_msg = "解析中…"
         self.btn_browser.setEnabled(bool(url))
+        self._refresh_fav_button()
         self._refresh_expand_button(url)
         self._rid_c = self.svc.load_comic(url)
 
@@ -600,12 +612,10 @@ class MangaPage(QWidget):
             # 先摆缓存/占位，取不到就等后台回填（避免卡住 GUI 线程）
             pm = self._covers.get(c.cover, QSize(120, 160))
             self.lb_cover.setPixmap(pm)
-        try:
-            from ..store import store
-            store().add_favorite({"site": c.site, "url": c.url, "title": c.title,
-                                  "author": c.author, "cover": c.cover, "tags": c.tags[:10]})
-        except Exception:
-            pass
+        # 这里**不再**自动收藏。以前打开任何一本漫画都会静默写进收藏表，
+        # 用户只是搜出来看看详情，收藏列表就被塞满了，删起来还很麻烦。
+        # 现在只把按钮状态同步成「这本书当前是否已收藏」，收不收藏由用户点按钮决定。
+        self._refresh_fav_button()
         self._rid_ch = self.svc.load_chapters(c.url)
 
     def _expand_all(self):
@@ -724,6 +734,61 @@ class MangaPage(QWidget):
             return
         if self.comic:
             self.enqueue.emit(self.comic, chs)
+
+    def _refresh_fav_button(self):
+        """按「当前这本书在不在收藏里」刷新按钮文案与可用性。
+
+        三种状态要分清，别让用户对着一个看不出所以然的按钮乱点：
+          - 还没有漫画（正在解析 / 解析失败）→ 置灰，文案「收藏」
+          - 已收藏 → 可点，文案「已收藏 ✓」（点一下取消）
+          - 未收藏 → 可点，文案「收藏」
+        """
+        btn = getattr(self, "btn_fav", None)
+        if btn is None:
+            return
+        c = self.comic
+        if c is None or not c.url:
+            btn.setEnabled(False)
+            btn.setText("收藏")
+            btn.setToolTip("正在解析漫画，稍后可收藏")
+            return
+        in_fav = False
+        try:
+            from ..store import store
+            in_fav = store().favorite_exists(c.site, c.url)
+        except Exception:
+            in_fav = False        # 库读不出来时按「未收藏」显示，点下去会再报错
+        btn.setEnabled(True)
+        if in_fav:
+            btn.setText("已收藏 ✓")
+            btn.setToolTip("这本已在收藏里。点一下取消收藏。")
+        else:
+            btn.setText("收藏")
+            btn.setToolTip("把当前漫画加入收藏")
+
+    def _toggle_fav(self):
+        """点收藏按钮：不在收藏里就加，已在收藏里就取消。"""
+        c = self.comic
+        if c is None or not c.url:
+            QMessageBox.information(self, "提示", "还没有可以收藏的漫画")
+            return
+        from ..store import store
+        try:
+            if store().favorite_exists(c.site, c.url):
+                store().remove_favorite(c.site, c.url)
+                self.status_msg = f"已取消收藏：{c.title}"
+            else:
+                store().add_favorite({"site": c.site, "url": c.url, "title": c.title,
+                                      "author": c.author, "cover": c.cover,
+                                      "tags": c.tags[:10]})
+                self.status_msg = f"已收藏：{c.title}"
+        except Exception as exc:  # noqa: BLE001 —— 写库失败要说出来，不能静默
+            log.warning("收藏操作失败：%s", exc)
+            QMessageBox.warning(self, "收藏失败", f"{type(exc).__name__}: {exc}")
+            return
+        # 先刷新自己的按钮，再通知收藏页重载
+        self._refresh_fav_button()
+        self.fav_changed.emit()
 
     def _open_in_browser(self):
         """把当前漫画（或正在解析的网址）交给内置浏览器页打开。
@@ -2448,6 +2513,8 @@ class MainWindow(QMainWindow):
         self.search.open_comic.connect(self.show_comic)
         self.favs.open_comic.connect(self.show_comic)
         self.manga.enqueue.connect(self.add_tasks)
+        # 详情页收藏按钮改了库 → 收藏页立刻同步（否则切过去还是旧列表）
+        self.manga.fav_changed.connect(self.favs.reload)
         # 详情页 / 图源页 → 内置浏览器
         self.manga.open_browser.connect(self.open_in_browser)
         self.sources.open_browser.connect(self.open_in_browser)

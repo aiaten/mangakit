@@ -848,4 +848,11 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.path.insert(0, str(ROOT))
-    raise SystemExit(main())
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    code = main()
+    # 本脚本建过 MainWindow/SearchPage（含 CoverLoader 的 QThreadPool），退出前
+    # 必须按序拆 Qt，否则 Windows 会弹「python.exe - 应用程序错误 ... 该内存不能
+    # 为 read」。成因与实测数据见 tools/qt_teardown.py 的模块注释。
+    from qt_teardown import teardown
+    teardown()
+    raise SystemExit(code)

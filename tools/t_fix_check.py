@@ -163,4 +163,13 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # 先按顺序拆 Qt 再退出：本脚本建了 MangaPage / FavoritesPage（含
+    # CoverLoader 的 QThreadPool），收尾顺序不对时 Windows 会弹
+    # 「python.exe - 应用程序错误 ... 该内存不能为 read」（实测偶发 1/10）。
+    # 成因与实测数据见 tools/qt_teardown.py 的模块注释。
+    import sys as _sys
+    _sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent))
+    from qt_teardown import teardown
+    _code = main()
+    teardown()
+    raise SystemExit(_code)
