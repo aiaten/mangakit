@@ -191,6 +191,7 @@ class SearchPage(QWidget):
     """搜索框 + 结果网格。"""
 
     open_comic = Signal(object)   # Comic
+    fav_changed = Signal()        # 收藏表被这里的右键菜单改过，让收藏页重载
 
     def __init__(self, svc: ComicService, parent=None):
         super().__init__(parent)
@@ -239,6 +240,11 @@ class SearchPage(QWidget):
         self.list.setWordWrap(True)
         self.list.setUniformItemSizes(True)   # 条目同尺寸，滚动与布局大幅提速
         self.list.itemDoubleClicked.connect(self._open_item)
+        # 右键菜单收藏：不进详情页也能收，双击仍然是「打开详情」
+        self.list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.list.customContextMenuRequested.connect(self._on_list_menu)
+        # 选中项一变就刷新「收藏选中」的文案与可用性
+        self.list.itemSelectionChanged.connect(self._refresh_sel_fav_button)
         self.list.setStyleSheet("QListWidget::item{padding:4px} QListWidget::item:selected{background:#3b6ea5}")
         lay.addWidget(self.list, 1)
 
@@ -246,6 +252,12 @@ class SearchPage(QWidget):
         self.btn_open_url = QPushButton("打开网址…")
         self.btn_open_url.clicked.connect(self.open_by_url)
         row.addWidget(self.btn_open_url)
+        # 选中一条结果就能直接收藏，不必进详情页（v0.4.2）
+        self.btn_fav = QPushButton("收藏选中")
+        self.btn_fav.setEnabled(False)
+        self.btn_fav.setToolTip("选中一条搜索结果后可以收藏（再点一次取消收藏）")
+        self.btn_fav.clicked.connect(self._toggle_sel_fav)
+        row.addWidget(self.btn_fav)
         row.addStretch(1)
         self.status = QLabel("")
         row.addWidget(self.status)
@@ -290,6 +302,7 @@ class SearchPage(QWidget):
         self._items.clear()
         self._shown = 0
         self._covers._done.clear()
+        self._refresh_sel_fav_button()   # 列表清空了，「收藏选中」得跟着置灰
 
     def open_by_url(self):
         url, ok = QInputDialog_getText(self, "打开网址", "漫画详情页网址：")
@@ -376,6 +389,111 @@ class SearchPage(QWidget):
         self.btn.setEnabled(True)
         self.status.setText(msg.replace("\n", " "))
         QMessageBox.warning(self, "失败", msg)
+
+    def _selected_comic(self):
+        """当前选中的那条结果；没选中/不是 Comic 就返回 None。"""
+        it = self.list.currentItem()
+        if it is None or not it.isSelected():
+            return None
+        c = it.data(Qt.UserRole)
+        return c if isinstance(c, Comic) else None
+
+    def _refresh_sel_fav_button(self):
+        """按「选中的这条在不在收藏里」刷新「收藏选中」按钮。
+
+        三种状态与详情页按钮一致：没选中 → 置灰；已收藏 → 「已收藏 ✓」；
+        未收藏 → 「收藏选中」。读库失败按未收藏处理，点下去会再报错。
+        """
+        btn = getattr(self, "btn_fav", None)
+        if btn is None:
+            return
+        c = self._selected_comic()
+        if c is None or not c.url:
+            btn.setEnabled(False)
+            btn.setText("收藏选中")
+            btn.setToolTip("选中一条搜索结果后可以收藏（再点一次取消收藏）")
+            return
+        in_fav = False
+        try:
+            from ..store import store
+            in_fav = store().favorite_exists(c.site, c.url)
+        except Exception:
+            in_fav = False
+        btn.setEnabled(True)
+        if in_fav:
+            btn.setText("已收藏 ✓")
+            btn.setToolTip("选中的这本已在收藏里。点一下取消收藏。")
+        else:
+            btn.setText("收藏选中")
+            btn.setToolTip(f"把「{c.title}」加入收藏")
+
+    def _toggle_sel_fav(self):
+        """「收藏选中」按钮：选中的不在收藏里就加，在就取消。"""
+        c = self._selected_comic()
+        if c is None or not c.url:
+            QMessageBox.information(self, "提示", "请先在结果里选中一本漫画")
+            return
+        from ..store import store
+        want = True
+        try:
+            want = not store().favorite_exists(c.site, c.url)
+        except Exception:
+            want = True
+        self._set_item_favorite(c, want)
+
+    def _on_list_menu(self, pos):
+        """右键搜索结果：弹出菜单。"""
+        it = self.list.itemAt(pos)
+        if it is None:
+            return                       # 点在空白处：不弹菜单
+        m = self._build_item_menu(it)
+        if m is not None:
+            m.exec(self.list.viewport().mapToGlobal(pos))
+
+    def _build_item_menu(self, it: QListWidgetItem):
+        """给一条搜索结果造右键菜单；不是有效条目就返回 None。
+
+        菜单的构造与弹出分开，是为了让回归脚本能拿到菜单逐项断言文案与可用性，
+        不必真的 `exec()`（那会阻塞在事件循环里，测试没法继续）。
+        """
+        c = it.data(Qt.UserRole) if it is not None else None
+        if not isinstance(c, Comic):
+            return None
+        in_fav = False
+        try:
+            from ..store import store
+            in_fav = store().favorite_exists(c.site, c.url)
+        except Exception:
+            in_fav = False               # 库读不出来按「未收藏」显示，点下去会再报错
+        m = QMenu(self)
+        m.addAction("打开详情", lambda: self.open_comic.emit(c))
+        m.addSeparator()
+        if in_fav:
+            m.addAction("取消收藏", lambda: self._set_item_favorite(c, False))
+        else:
+            m.addAction("收藏", lambda: self._set_item_favorite(c, True))
+        if c.url:
+            m.addAction("复制网址", lambda: QApplication.clipboard().setText(c.url))
+        return m
+
+    def _set_item_favorite(self, c: Comic, want: bool):
+        """把一条搜索结果加进/移出收藏，成功后刷新菜单状态与收藏页。"""
+        from ..store import store
+        try:
+            if want:
+                store().add_favorite({"site": c.site, "url": c.url, "title": c.title,
+                                      "author": c.author, "cover": c.cover,
+                                      "tags": list(c.tags or [])[:10]})
+            else:
+                store().remove_favorite(c.site, c.url)
+        except Exception as exc:  # noqa: BLE001 —— 写库失败要说出来，不能静默
+            log.warning("搜索页收藏操作失败：%s", exc)
+            QMessageBox.warning(self, "收藏失败", f"{type(exc).__name__}: {exc}")
+            return
+        verb = "已收藏" if want else "已取消收藏"
+        self.status.setText(f"{verb}：{c.title}")
+        self._refresh_sel_fav_button()
+        self.fav_changed.emit()
 
     def _open_item(self, item: QListWidgetItem):
         c = item.data(Qt.UserRole)
@@ -2515,6 +2633,8 @@ class MainWindow(QMainWindow):
         self.manga.enqueue.connect(self.add_tasks)
         # 详情页收藏按钮改了库 → 收藏页立刻同步（否则切过去还是旧列表）
         self.manga.fav_changed.connect(self.favs.reload)
+        # 搜索页右键菜单收藏同理
+        self.search.fav_changed.connect(self.favs.reload)
         # 详情页 / 图源页 → 内置浏览器
         self.manga.open_browser.connect(self.open_in_browser)
         self.sources.open_browser.connect(self.open_in_browser)
