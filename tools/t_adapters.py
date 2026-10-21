@@ -69,7 +69,8 @@ print("ADAPTERS=" + ",".join(sorted(r._adapters)))
 print("SITES=" + ",".join(sorted(r.sites)))
 for u in ("https://m.dm5w.com/manga/123/",
           "https://www.kuaikanmanzhen.com/comic/1",
-          "https://www.kzdm.com/manhuaziyuan/"):
+          "https://www.kzdm.com/manhuaziyuan/",
+          "https://www.copy4000.com/comic/haizeiwang"):
     s = r.site_for_url(u)
     print("HIT=" + (s.id if s else "None"))
 print("FORURL=" + str(type(r.for_url("https://m.dm5w.com/manga/123/")[1]).__name__))
@@ -97,15 +98,15 @@ def test_cold_start() -> None:
     rc, txt = _run(_COLD)
     lines = dict(ln.split("=", 1) for ln in txt.splitlines() if "=" in ln)
     check("子进程正常退出", rc == 0, f"rc={rc} {txt.strip()[:200]}")
-    want = "kuaikan,kzdm,mstation"
-    check("三个内置适配器都已注册", lines.get("ADAPTERS") == want,
+    want = "copy4000,kuaikan,kzdm,mstation"
+    check("四个内置适配器都已注册", lines.get("ADAPTERS") == want,
           f"got={lines.get('ADAPTERS')!r} want={want!r}")
     sites = (lines.get("SITES") or "").split(",")
-    for sid in ("mstation", "kuaikan", "kzdm"):
+    for sid in ("mstation", "kuaikan", "kzdm", "copy4000"):
         check(f"站点 {sid} 存在", sid in sites)
     hits = [ln.split("=", 1)[1] for ln in txt.splitlines() if ln.startswith("HIT=")]
-    check("site_for_url 命中 mstation/kuaikan/kzdm",
-          hits == ["mstation", "kuaikan", "kzdm"], f"got={hits}")
+    check("site_for_url 命中 mstation/kuaikan/kzdm/copy4000",
+          hits == ["mstation", "kuaikan", "kzdm", "copy4000"], f"got={hits}")
     check("for_url 返回内置适配器实例（不是 RuleAdapter）",
           lines.get("FORURL") == "MStationAdapter", f"got={lines.get('FORURL')!r}")
 
@@ -126,14 +127,17 @@ def test_reload() -> None:
     n1 = len(r1._adapters)
     r2 = reload_registry()
     check("reload 返回了新实例", r2 is not r1)
-    check("新实例仍有 3 个内置适配器", sorted(r2._adapters) == ["kuaikan", "kzdm", "mstation"],
+    check("新实例仍有 4 个内置适配器",
+          sorted(r2._adapters) == ["copy4000", "kuaikan", "kzdm", "mstation"],
           f"got={sorted(r2._adapters)}")
     check("reload 前后适配器数量一致", len(r2._adapters) == n1, f"{n1} -> {len(r2._adapters)}")
-    for sid in ("mstation", "kuaikan", "kzdm"):
+    for sid in ("mstation", "kuaikan", "kzdm", "copy4000"):
         check(f"reload 后 {sid} 站点仍可用",
               r2.site_for_url({"mstation": "https://m.dm5w.com/manga/1/",
                                "kuaikan": "https://www.kuaikanmanzhen.com/comic/1",
-                               "kzdm": "https://www.kzdm.com/x/"}[sid]) is not None)
+                               "kzdm": "https://www.kzdm.com/x/",
+                               "copy4000": "https://www.copy4000.com/comic/x"}[sid])
+              is not None)
 
 
 # ------------------------------------------------- 4-6. parse_chapters 取节点

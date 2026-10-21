@@ -144,5 +144,13 @@
     "download": 3,
     "search": "鬼压床",
     "full": true
+  },
+  {
+    "id": "copy4000",
+    "site_name": "拷貝漫畫",
+    "url": "https://www.copy4000.com/comic/haizeiwang",
+    "chapter": 0,
+    "download": 3,
+    "search": "海贼王"
   }
 ]

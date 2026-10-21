@@ -103,6 +103,7 @@ _MEI*/
 /mk_export_*
 /mk_sfav_*
 /mk_click_*
+/mk_c4k_*
 
 # tools\t_publish.py 的两个中间产物。它们本该落在 tempfile.gettempdir()，但本机
 # 系统 TEMP 不可写、gettempdir() 退回仓库根，于是 dry-run 一次就在根目录留下

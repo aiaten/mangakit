@@ -8,6 +8,6 @@
 4. PySide6 原生 GUI。
 """
 
-__version__ = "0.4.2"
+__version__ = "0.4.3"
 __app_name__ = "MangaKit"
 __app_name_cn__ = "漫卷"

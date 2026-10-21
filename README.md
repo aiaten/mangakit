@@ -1,13 +1,13 @@
 # 漫卷 MangaKit
 
-> 版本 **0.4.2** ｜ 通用漫画批量下载器 ｜ Windows
+> 版本 **0.4.3** ｜ 通用漫画批量下载器 ｜ Windows
 
 **漫卷 MangaKit 是一个本地规则驱动的漫画下载软件**：把漫画网站的页面结构写成 JSON 规则，
 由程序直接抓取详情页、章节列表和图片地址并下载。它**不走任何第三方服务器**，
 全部解析在你自己电脑上完成。
 
 *（上面这段自我描述与版本号引自 `使用文档.md` 开头的版本栏与
-`mangakit/__init__.py` 里的 `__version__`，两处当前都是 **0.4.2**。
+`mangakit/__init__.py` 里的 `__version__`，两处当前都是 **0.4.3**。
 本文所有对文档的引用一律按**章节名**给出，不写行号 —— 那份文档在改的时候行号会漂。）*
 
 ## 给谁用
@@ -16,7 +16,7 @@
 - 不想装一堆浏览器插件、也不想把网址交给在线解析站点的人；
 - 动手能力强一点、遇到新站愿意自己加规则的高级用户（支持图形界面「添加网站」或手写 JSON）。
 
-**不需要会写代码**：内置 22 条站点规则，装好就能用。
+**不需要会写代码**：内置 22 条站点规则 + 4 个代码适配器站（共 26 个站点），装好就能用。
 
 ---
 
@@ -228,32 +228,35 @@ MangaKit.exe --selftest report.txt
 
 ### 内置规则
 
-当前内置 **22 条规则**，其中：
+当前内置 **22 条 JSON 规则 + 4 个代码适配器站（共 26 个站点）**，其中：
 
 | 指标 | 数量 | 数字出处 |
 | --- | --- | --- |
 | 规则文件总数 | **22** | `mangakit/rules/*.json`，实点数得 22 |
-| 可见站点（`"hidden"` 未设） | **12** | 实点 JSON：12 个可见 / 10 个隐藏 |
-| 支持站内搜索 | **12** | `Site.can_search`（`sites.py:387-391`）= `search.url` 或非空 `search_url`；22 条里恰好 12 条为真 |
+| 代码适配器站 | **4** | `adapters.py` 注册：`mstation` / `kuaikan` / `kzdm` / `copy4000`（没有 JSON 规则文件） |
+| 站点总数 | **26** | 22 条规则 + 4 个适配器站 |
+| 可见站点（`"hidden"` 未设） | **16** | 实测 16 个可见 / 10 个隐藏 |
+| 支持站内搜索 | **13** | `Site.can_search`（`sites.py:387-391`）= `search.url` 或非空 `search_url`；26 个站点里 13 个为真 |
 | 配了折叠章节补齐通道 | **3** | 顶漫画 / D漫画 / 神奇漫画 |
-| 通过实网下载验证 | **19/19** | `tools/verify.out.json`：19 条记录，`ok` 全为 `true` |
+| 通过实网下载验证 | **19/20** | `tools/verify.out.json`：20 条用例，19 条 `ok` 为 `true`；唯一没过的是 `mh250`（站方 DNS 不可达） |
 
-19 个实网站点覆盖漫画柜、漫画之家、漫画站、动漫网、動漫戲說、咚漫、漫画栈、漫画网、
-上看漫画、D漫画、动漫啦、松子漫画、漫画屋、包子漫画、250漫画、顶漫画、漫画1234、
-神奇漫画等（`tools/verify.out.json` 19 条记录逐条核对）。
+19 条通过用例覆盖漫画柜、漫画之家、漫画站、动漫网、動漫戲說、咚漫、漫画栈、漫画网、
+上看漫画、D漫画、动漫啦、松子漫画、漫画屋、包子漫画、顶漫画、漫画1234、
+神奇漫画、拷貝漫畫等（`tools/verify.out.json` 逐条核对）。
 另外 **2 条是站方模板/示例**（`templatedm`「通用 M 站模板」、`kanmanmanhua`「标准 M 站模板」注释里写明是规则示例），
 **1 条 `manhuagui` 是旧域名别名**（`mhquan.com`；该站防火墙对普通浏览器 UA 全站返回非标状态码 702
 拦截页，**建议改用 `manhuagui_cc`（manhuagui.cc）**）。
 详细的逐站实测结果（章节数 / 图片数 / 搜索结果数）见 `使用文档.md` 第三节。
 
-> **12 个可见站 / 10 个隐藏站**（`sites.py:1059` 的 `visible_sites()` = 已启用且规则未标 `hidden`）。
-> 按 `Site.can_search` 口径（`sites.py:387-391`：`search.url` 或非空 `search_url`）实测这 22 条里
-> **12 条可搜索、10 条不可**，与可见/隐藏**完全重合** —— 这不是巧合：`sites.py:383-384` 写明
+> **16 个可见站 / 10 个隐藏站**（`sites.py:1059` 的 `visible_sites()` = 已启用且规则未标 `hidden`）。
+> 按 `Site.can_search` 口径（`sites.py:387-391`：`search.url` 或非空 `search_url`）实测 26 个站点里
+> **13 个可搜索、13 个不可**；10 个隐藏站全部不支持搜索，其余 3 个不可搜索的站是可见的
+> （`manhuazhan` / `dongmanwang` 这类：下载能用但站内搜索页是空壳）。`sites.py:383-384` 写明
 > `hidden` 就是给「下载能用但没有站内搜索」的站准备的，功能保留，只是不占用户的选择列表。
-> 用 `tools/verify.py` 的 `can_search` 字段交叉核对（19 个实网验证站里 11 条为 true），
+> 用 `tools/verify.py` 的 `can_search` 字段交叉核对（20 条用例里 12 条为 true），
 > 结论一致（`tools/verify.py:95-96` 那行注释正是为「search 坏了却照样 PASS」这个坑加的）。
 > 隐藏的站**规则仍在**：仍能被 `for_url` 按网址匹配，
-> 仍可通过「打开网址…」直接下载，也会在 `verify.py` 里照跑（19 个实网验证站里就有 kanman、
+> 仍可通过「打开网址…」直接下载，也会在 `verify.py` 里照跑（20 条用例里就有 kanman、
 > dongmanwang、manhuawang、manhuazhan 等隐藏站）。
 > 想让某个站重新出现在下拉里，把规则文件里的 `"hidden": true` 删掉即可 ——
 > 不支持搜索的站进下拉后会带「（不支持搜索）」后缀，并在全站搜索时被自动跳过
@@ -358,6 +361,7 @@ mangakit/
 │   ├── http_client.py           httpx 客户端（重试 / 限速 / http2 / 编码嗅探）
 │   ├── sites.py                 规则引擎：Selector / RuleAdapter / SiteRegistry
 │   ├── crypto.py                页面加密解密（mhzh 系站点的 decryptData 端口）
+│   ├── aes.py                   纯 Python AES-128-CBC（copy4000 密文用，零第三方依赖）
 │   ├── images.py                图片嗅探 / 校验 / 长图切割 / 命名
 │   ├── downloader.py            下载管理器（独立线程跑 asyncio、断点续传）
 │   ├── exporter.py              CBZ / ZIP / PDF / EPUB / 长条图导出
@@ -370,7 +374,7 @@ mangakit/
 │   │   ├── bridge.py            Qt 信号桥（后台线程 → UI 线程）
 │   │   └── main_window.py       七个页面（搜索 / 详情 / 任务 / 收藏 / 设置 / 图源仓库 / 内置浏览器）
 │   └── rules/
-│       └── *.json               站点规则，一条一站（22 条）
+│       └── *.json               站点规则，一条一站（22 条；另有 4 个代码适配器站）
 ├── tools/                       开发与测试脚本
 │   ├── verify.py                实网验证：逐站解析 + 下载，输出 PASS/FAIL
 │   ├── cases.json               验证用的测试用例
@@ -483,7 +487,7 @@ python tools\t_no_splash.py         # 启动窗口回归：不得再有 tk 启�
 ### 第 3 层：实网验证（联网，每站几秒）
 
 ```bash
-python tools\verify.py              # 全部 19 个实网站点
+python tools\verify.py              # 全部 20 条用例（19 条规则站 + copy4000）
 python tools\verify.py comicwang kanman   # 只验某几个
 ```
 
@@ -494,7 +498,7 @@ python tools\verify.py comicwang kanman   # 只验某几个
 
 > 注意：`tools\verify.out.json` 与 `tools\_smoke\` 都是**跑测试时在本地产出的东西**，
 > 已经被 `.gitignore` 排除，不会进仓库 —— 你在 GitHub 上看不到它们是正常的，
-> 本文引用的 19/19、53 条、56 条与 29 项断言都来自**本机实跑的那一份**，自己跑一遍即可复现。
+> 本文引用的 19/20、53 条、56 条、66 项与 29 项断言都来自**本机实跑的那一份**，自己跑一遍即可复现。
 
 ### 第 3.5 层：图源转换的真跑回归（联网）
 
@@ -617,7 +621,7 @@ MangaPage._on_comic  →  内部自动 store().add_favorite()   （v0.4.1 起已
 
 - 配置：`mangakit.spec`，用 `python -m PyInstaller --noconfirm --clean mangakit.spec`。
 - 产物：`dist\MangaKit.exe`，**onefile**（单文件）、**windowed**（双击不弹黑框）。
-- **实测体积 171.6 MB**（171,631,187 字节，`dist\MangaKit.exe`，2026-10-18 22:03:36 构建）。
+- **实测体积 171.6 MB**（171,644,248 字节，`dist\MangaKit.exe`，2026-10-21 22:49:01 构建）。
   v0.1.0 时代是 63.4 MB —— 涨上来的部分基本就是 QtWebEngine 那套 Chromium 运行库。
   v0.3.1 移除启动画面后比 v0.3.0 小了约 1.7 MB（不再打包 Tcl/Tk 那套 DLL）。
 - 站点规则以 data 文件形式打包（`datas` 里 `mangakit/rules` → `_MEIPASS/mangakit/rules`），
@@ -721,7 +725,7 @@ GitHub 对**单个 Git 对象**有 **100 MB** 硬上限，对 **Release 资产**
 
 | 项 | 实测 |
 | --- | --- |
-| 正式版 exe 体积 | **171,631,187 字节（≈171.6 MB）**，2026-10-18 22:03:36 构建（v0.4.2） |
+| 正式版 exe 体积 | **171,644,248 字节（≈171.6 MB）**，2026-10-21 22:49:01 构建（v0.4.3） |
 | 对比 v0.1.0（无 WebEngine） | 63.4 MB —— 差出来的约 109 MB 基本就是 Chromium |
 | v0.3.1 减掉的 | 约 1.7 MB（移除启动画面，不再打包 `tcl86t.dll` 905 KB + `tk86t.dll` 707 KB + `Splash-00.res` 62 KB） |
 | 被过滤掉的调试资源 | `qtwebengine_devtools_resources*.pak`，实测 **83.4 MB**（只给 F12 远程调试用） |
@@ -766,11 +770,11 @@ v0.1.0 那会儿 `__version__` 一直是 `0.1.0`，而你手上那个 exe 可能
 （`search_done` 回的是列表而非总数，且没有 `search_partial`）—— 见 `使用文档.md`
 的「九、目录结构（源码）→ 冒烟脚本分工」一节。
 
-现在版本号已抬到 **0.4.2**，而且 **exe 内嵌了版本资源**（`assets/version_info.txt`，
+现在版本号已抬到 **0.4.3**，而且 **exe 内嵌了版本资源**（`assets/version_info.txt`，
 版本号从 `mangakit/__init__.py` 的 `__version__` 现读），所以确认方式很直接：
 
 1. **看属性（最直接）**：右键 `MangaKit.exe` → 属性 → **详细信息** →
-   看 **FileVersion**。是 `0.4.2` 就是最新版；`0.4.0`/`0.3.3`/`0.3.2`/`0.3.1`/`0.3.0`/`0.2.0`/`0.1.0` 或空白就是老的。
+   看 **FileVersion**。是 `0.4.3` 就是最新版；`0.4.2`/`0.4.1`/`0.4.0`/`0.3.3`/`0.3.2`/`0.3.1`/`0.3.0`/`0.2.0`/`0.1.0` 或空白就是老的。
    另外 `0.3.1` 起**双击后不应再出现任何 `tk` 小窗口**（那是老版的坏启动画面）；
    `0.3.2` 起**日志里不应再有 `pyi_splash` 警告**（`%APPDATA%\mangakit\logs\mangakit.log`）；
    `0.3.3` 起**漫画名/章节名是 `CON`、`NUL` 这类保留设备名、或路径过长时也能正常下载**。
@@ -850,6 +854,6 @@ kanman 的图片地址带时间戳签名，正确做法是**重新打开该章�
 
 ## 许可
 
-漫卷 MangaKit v0.4.2 ｜ 仅供个人学习与离线备份使用。
+漫卷 MangaKit v0.4.3 ｜ 仅供个人学习与离线备份使用。
 
 下载的内容请自行遵守各站点的使用条款。完整使用说明见 [使用文档.md](使用文档.md)。
